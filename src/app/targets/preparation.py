@@ -146,6 +146,29 @@ class TargetPreparationService:
             row["source"],
         )
 
+    def get_selected(self, campaign_id: str) -> SelectedTarget:
+        """Return the one selected candidate required by a live capture campaign."""
+        row = self.connection.execute(
+            """
+            SELECT selection.campaign_id, hit.hit_id, hit.group_id,
+                   hit.canonical_url, hit.name, hit.source
+            FROM selected_targets AS selection
+            JOIN candidate_hits AS hit ON hit.hit_id = selection.candidate_hit_id
+            WHERE selection.campaign_id = ?
+            """,
+            (campaign_id,),
+        ).fetchone()
+        if row is None:
+            raise TargetPreparationError("campaign has no selected target")
+        return SelectedTarget(
+            row["campaign_id"],
+            row["hit_id"],
+            row["group_id"],
+            row["canonical_url"],
+            row["name"],
+            row["source"],
+        )
+
     def _create_campaign(self, keyword: str, location: str) -> str:
         campaign_id, query_id = str(uuid4()), str(uuid4())
         now = datetime.now(UTC).isoformat()

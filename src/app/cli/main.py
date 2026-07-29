@@ -2,16 +2,22 @@
 
 import json
 import os
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
 import typer
 
 from app import __version__
+from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
 from app.session import SessionProfileService, collect_guided_storage_state
 from app.storage.database import Database
+from app.storage.live_runs import LiveRunRepository
+from app.storage.repositories import JobRepository
 from app.targets import TargetPreparationService
 from app.workflows import FixtureWorkflow
+from app.workflows.live_capture import LiveCaptureWorkflow
 
 app = typer.Typer(
     name="pgscan",
@@ -65,6 +71,47 @@ def run(
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
     typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+
+
+@app.command("capture")
+def capture(
+    profile: Annotated[str, typer.Option("--profile")],
+    campaign: Annotated[str, typer.Option("--campaign")],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
+    """Capture the selected Group through its encrypted browser session."""
+    try:
+        job_id = str(uuid4())
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            sessions = SessionProfileService(database.connection, session_root)
+            state = sessions.read_state(profile)
+            selected = TargetPreparationService(database.connection).get_selected(campaign)
+            JobRepository(database.connection).create(job_id)
+            LiveRunRepository(database.connection).create(
+                job_id,
+                profile,
+                selected,
+                datetime.now(UTC) - timedelta(days=30),
+                "playwright_group/1.0",
+            )
+        html = PlaywrightGroupCaptureAdapter(state).capture_group(selected.canonical_url)
+        result = LiveCaptureWorkflow(output, raw_root).capture_html(job_id, html)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(
+        json.dumps(
+            {
+                "identifiers": list(result.identifiers),
+                "job_id": result.job_id,
+                "state": result.state.value,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 @app.command()
