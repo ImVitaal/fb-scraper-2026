@@ -160,6 +160,30 @@ def test_run_rejects_a_raw_root_inside_the_repository(tmp_path: Path) -> None:
     assert "outside the repository" in result.stdout
 
 
+def test_run_accepts_repeatable_toml_configuration(tmp_path: Path) -> None:
+    fixture = tmp_path / "fixture.json"
+    fixture.write_bytes(FIXTURE.read_bytes())
+    config = tmp_path / "run.toml"
+    config.write_text(
+        """
+        [run]
+        fixture = "fixture.json"
+        output = "operator-data"
+        raw_root = "../private-raw"
+        """,
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(app, ["run", "--config", str(config)])
+
+    assert result.exit_code == 0, result.output
+    payload = _result_payload(result.stdout)
+    identifiers = cast(list[str], payload["identifiers"])
+    assert set(identifiers) == EXPECTED_IDENTIFIERS
+    assert (tmp_path / "operator-data" / "scanner.sqlite3").is_file()
+    assert (tmp_path.parent / "private-raw" / f"{payload['run_id']}.json.gz").is_file()
+
+
 def test_clean_respects_dry_run_then_removes_expired_raw_and_normalized_records(
     tmp_path: Path,
 ) -> None:

@@ -11,6 +11,7 @@ import typer
 
 from app import __version__
 from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
+from app.configuration import FixtureRunConfiguration
 from app.contracts.models import JobState
 from app.retention import RetentionService
 from app.session import SessionProfileService, collect_guided_storage_state
@@ -62,13 +63,24 @@ DEFAULT_SESSION_ROOT = DEFAULT_OUTPUT / "sessions"
 
 @app.command()
 def run(
-    fixture: Annotated[Path, typer.Option("--fixture", exists=True, dir_okay=False, readable=True)],
+    fixture: Annotated[
+        Path | None, typer.Option("--fixture", dir_okay=False, readable=True)
+    ] = None,
+    config: Annotated[Path | None, typer.Option("--config", dir_okay=False, readable=True)] = None,
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
 ) -> None:
     """Store, parse, persist, and export one synthetic raw fixture."""
     try:
-        result = FixtureWorkflow(output, raw_root).run(fixture)
+        if config is not None:
+            if fixture is not None:
+                raise ValueError("use either --fixture or --config")
+            configured = FixtureRunConfiguration.load(config)
+            result = FixtureWorkflow(configured.output, configured.raw_root).run(configured.fixture)
+        else:
+            if fixture is None:
+                raise ValueError("--fixture or --config is required")
+            result = FixtureWorkflow(output, raw_root).run(fixture)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
