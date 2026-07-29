@@ -10,6 +10,7 @@ import typer
 from app import __version__
 from app.session import SessionProfileService, collect_guided_storage_state
 from app.storage.database import Database
+from app.targets import TargetPreparationService
 from app.workflows import FixtureWorkflow
 
 app = typer.Typer(
@@ -18,7 +19,9 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 session_app = typer.Typer(help="Prepare and manage encrypted session profiles.")
+target_app = typer.Typer(help="Prepare one Group target through discovery or fallback inputs.")
 app.add_typer(session_app, name="session")
+app.add_typer(target_app, name="target")
 
 
 def _version_callback(value: bool) -> None:
@@ -179,6 +182,58 @@ def delete(
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
     typer.echo(json.dumps({"deleted": profile}, sort_keys=True))
+
+
+@target_app.command("add-url")
+def add_url(
+    url: Annotated[str, typer.Option("--url")],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+) -> None:
+    """Create and select one direct Group URL fallback target."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            selected = TargetPreparationService(database.connection).add_url(url)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(selected.as_dict(), sort_keys=True))
+
+
+@target_app.command("add-csv")
+def add_csv(
+    csv_file: Annotated[Path, typer.Option("--csv", exists=True, dir_okay=False, readable=True)],
+    select: Annotated[str | None, typer.Option("--select")] = None,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+) -> None:
+    """Create CSV fallback candidates and select exactly one candidate."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            service = TargetPreparationService(database.connection)
+            campaign = service.add_csv(csv_file)
+            result = service.select(campaign.campaign_id, select) if select else campaign
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+
+
+@target_app.command("select")
+def select_target(
+    campaign: Annotated[str, typer.Option("--campaign")],
+    candidate: Annotated[str, typer.Option("--candidate")],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+) -> None:
+    """Select one durable CSV or discovery candidate for a campaign."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            selected = TargetPreparationService(database.connection).select(campaign, candidate)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(selected.as_dict(), sort_keys=True))
 
 
 def main() -> None:

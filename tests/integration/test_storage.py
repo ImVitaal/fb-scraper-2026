@@ -130,10 +130,10 @@ def test_migrations_round_trip_and_remain_idempotent(tmp_path: Path) -> None:
         versions = reopened.applied_versions()
         foreign_keys = reopened.connection.execute("PRAGMA foreign_keys").fetchone()[0]
 
-    assert first == [1, 2, 3]
+    assert first == [1, 2, 3, 4]
     assert second == []
     assert third == []
-    assert versions == [1, 2, 3]
+    assert versions == [1, 2, 3, 4]
     assert foreign_keys == 1
     assert {
         "schema_versions",
