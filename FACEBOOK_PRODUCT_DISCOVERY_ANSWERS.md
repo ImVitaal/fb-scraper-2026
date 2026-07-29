@@ -1,110 +1,93 @@
-# Facebook product discovery answers
+# Product discovery answers
 
-**Recorded:** 2026-07-29  
-**Purpose:** Capture the operator's selected product requirements without replacing unanswered decisions.
+**Recorded:** 2026-07-29
+**Revision:** 2
+**Purpose:** Record the operator decisions controlling the four-phase direction.
 
 ## Product objective
 
 | Question | Answer |
 |---|---|
-| Most important outcome | Business intelligence |
-| Main workflow | Competitor monitoring |
-| First paying customer | Free |
+| Primary driver | Beat paid competitors at private-Group scanning |
+| First proof | One-Group working demo |
+| Main Phase 1 priority | Correctness and resume behavior |
+| Later competitive claim | Faster, more efficient, and free |
 | First operator | The owner personally |
-| Most important success metric | Reliability |
+| Primary audience | Technical operators |
+| Access model | Free and self-hosted |
 
-### Interpretation note
+## Four phases
 
-The answer **“Free”** was given to the customer question. A later answer selected **free self-hosted** as the access model.
+| Phase | Decision |
+|---|---|
+| 1 | Prove one complete private-Group discovery-to-export workflow |
+| 2 | Scale the proven workflow to ten Groups and optimize performance |
+| 3 | Select competitors and run reproducible equal-contract comparisons |
+| 4 | Expand to additional surfaces and intelligence features |
 
-## Product and access model
+## Phase 1 scope
 
 | Question | Answer |
 |---|---|
-| Launch access model | Free self-hosted |
-| Paid collection dependencies | No paid dependencies |
-| Primary interface | Command line |
-| Command-line style | Single guided command |
-| First deployment target | Native Windows |
-| Scheduling | Manual command |
+| Surface | Private Groups visible through the operator session |
+| Content | Posts and top-level comments |
+| Replies | Deferred |
+| Post history | Previous 30 days |
+| Comment history | All visible top-level comments on matching posts |
+| Completion demo | One Group |
+| Group discovery | Required |
+| Discovery inputs | Keyword and location |
+| Other target inputs | Direct URLs and CSV |
+| Session methods | Browser-session import and guided login |
+| Session-method priority | Equal first-class methods |
+| Session encryption | Windows user-bound encryption |
+| Password retention | None |
+| Execution target | Native Windows |
+| Runtime | Python 3.12 or newer |
+| Interface | Single guided command plus repeatable configuration |
 
-## Facebook scope
-
-| Question | Answer |
-|---|---|
-| MVP surfaces | Pages, Groups, Events, and Posts |
-| Group coverage | Public and user-accessible Groups |
-| Signed-in Group session method | Cookie import |
-| Historical collection depth | Last 30 days |
-| Engagement depth | Not answered |
-| Personal profiles | Not selected for the MVP |
-| Ads | Not selected for the MVP |
-| Marketplace | Not selected for the MVP |
-
-## Discovery and monitoring
+## Data and retention
 
 | Question | Answer |
 |---|---|
-| Target selection | Automatic discovery |
-| Discovery inputs | Keywords and locations |
-| Discovery engine | Not answered |
-| Default monitoring frequency | Weekly |
-| Weekly target capacity | Up to 100 targets |
-| Run notification | Local report only |
+| Outputs | CSV, JSON, SQLite, manifest, and Markdown report |
+| Raw evidence | Store compressed captures before parsing |
+| Media | Metadata and source URLs only |
+| Private raw retention | 30 days |
+| Normalized retention | 90 days |
+| Replay | Required without network access |
+| Resume | Required before performance optimization |
 
-## Data and exports
+## Free definition
 
-| Question | Answer |
-|---|---|
-| Primary delivery | Downloadable datasets |
-| Export formats | CSV and JSON |
-| Analysis before export | Raw structured data |
-| Repeated collections | Append snapshots |
-| Media handling | Store metadata and source URLs |
-| Export layout | Not answered |
-| Local storage model | Not answered |
-| Default retention | 90 days |
+Phase 1 requires zero spending:
 
-## Session and secret handling
+- No paid collection API.
+- No paid proxy.
+- No paid subscription.
+- No required cloud service.
+- No paid collection dependency.
+- Local execution and storage.
 
-| Question | Answer |
-|---|---|
-| Initial session choice | Unsure |
-| Final session choice | Cookie import |
-| Cookie storage | Encrypted local file |
-| Encryption-key method | Not answered |
+## Measurement decisions
 
-## User experience
+Phase 1 records:
 
-The planned workflow currently implies:
+- Validated posts per minute.
+- Validated comments per minute.
+- End-to-end Group completion time.
+- Retry and failure counts.
+- CPU, memory, and storage use.
+- Completeness-adjusted throughput.
 
-1. Start one guided command.
-2. Enter keywords and locations.
-3. Import a Facebook cookie when user-accessible Group collection requires it.
-4. Discover relevant Pages, Groups, Events, and Posts.
-5. Collect the previous 30 days.
-6. Store media metadata and URLs without downloading media.
-7. Append a new weekly snapshot.
-8. Generate local CSV, JSON, and run-report files.
+Phase 1 sets no competitor performance threshold.
 
-## Confirmed priorities
+Competitor selection, normalized workloads, and superiority thresholds belong
+after the working demo.
 
-1. Reliability is more important than completeness or speed.
-2. The product must run locally on Windows.
-3. Core collection must avoid paid dependencies.
-4. The first release must be self-hosted and free.
-5. The first release must prioritize downloadable structured datasets.
-6. The product must support public and user-accessible Groups.
-7. Weekly monitoring must support up to 100 targets.
+## Deferred decisions
 
-## Decisions still open
-
-1. Choose SQLite with raw files, JSONL only, or PostgreSQL.
-2. Choose pluggable web search, Facebook search, or required SearXNG.
-3. Choose post counters only, full comments, or content only.
-4. Choose worldwide, UK-first, or single-country discovery.
-5. Choose separate entity files, one flattened file, or one nested bundle.
-6. Choose Windows user encryption, passphrase encryption, or an environment key.
-7. Define the exact first-user audience beyond the owner.
-8. Define acceptable reliability, completeness, duplicate, and freshness thresholds.
-
+1. Select the paid hosted competitors for Phase 3.
+2. Define Phase 3 superiority thresholds.
+3. Select Phase 4 expansion features.
+4. Define scheduled monitoring after the private-Group core is proven.

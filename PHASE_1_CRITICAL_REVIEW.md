@@ -1,105 +1,127 @@
 # Phase 1 critical review
 
-**Review date:** 2026-07-29  
-**Reviewed file:** `PHASE_1_OPTIMAL_PLAN.md`  
-**Verdict:** Good direction, but revision was required before fresh-session implementation.
+**Review date:** 2026-07-29
+**Reviewed revision:** `PHASE_1_OPTIMAL_PLAN.md` Revision 3
+**Verdict:** Ready as the Phase 1 implementation source.
 
-## Critical findings
+## Why Revision 2 was replaced
 
-### P0 — Local repository state was missing
+Revision 2 optimized for public Page discovery and collection.
 
-The workspace contains research files but is not a Git repository.
+The operator changed the product driver:
 
-The plan did not tell a fresh session that:
+- Private-Group scanning comes first.
+- Posts and top-level comments form the first content contract.
+- One working Group demo comes before scale.
+- Correctness and resume behavior come before speed.
+- Competitor comparison begins only after the local workflow works.
+- Other surfaces follow only after the private-Group advantage is proven.
 
-- The private remote repository already exists.
-- The local workspace has no `.git` directory.
-- Project initialization and remote attachment must happen before implementation.
+## Critical corrections in Revision 3
 
-### P0 — Discovery implementation was undecided
+### Phase boundaries are explicit
 
-The plan required automatic keyword-and-location discovery but specified only a replaceable adapter.
+The programme now separates:
 
-A fresh implementer still had to choose:
+1. One-Group correctness.
+2. Ten-Group performance.
+3. Competitor proof.
+4. Product expansion.
 
-- The first discovery source.
-- Its fallback behavior.
-- How candidates are canonicalized.
-- Whether live discovery is a release gate.
+This prevents performance optimization and feature breadth from blocking the
+first usable vertical slice.
 
-### P0 — Collection transport was undecided
+### The demo contract is exact
 
-“Public Page adapter” did not specify browser capture, HTTP capture, official API use, or another transport.
+Phase 1 requires:
 
-This decision affects fixtures, dependencies, session handling, pagination, and parser design.
+- Equal imported-session and guided-login workflows.
+- Keyword-and-location Group discovery.
+- One selected Group.
+- Thirty days of posts.
+- Every visible top-level comment on matching posts.
+- No reply expansion.
+- Raw capture, normalization, exports, resume, and offline replay.
 
-### P1 — Hashing left two choices
+### Authentication is separated from collection
 
-“BLAKE3 or SHA-256” was not decision-complete.
+Guided login occurs in a visible controlled browser.
 
-Phase 1 should use SHA-256 because it is available in Python’s standard library and adequate for integrity and deduplication.
+Collection workers consume only an encrypted session envelope. They never
+receive or persist account passwords.
 
-### P1 — Interactive-only CLI weakened reproducibility
+### Private evidence receives shorter retention
 
-One guided command matched the product answers, but tests and repeatable operations also require a non-interactive configuration mode.
+Private raw captures use a 30-day default.
 
-The same command should support prompts and a committed example TOML configuration.
+Normalized records retain the earlier 90-day default. Cleanup produces deletion
+receipts.
 
-### P1 — Acceptance gates mixed fixture truth with live behavior
+### Performance claims are delayed
 
-The 99% and 99.5% thresholds are meaningful only against labelled, fixed expectations.
+Phase 1 records performance metrics but sets no superiority threshold.
 
-Live Facebook counts can change during collection. The plan needed separate:
+Phase 3 will select competitors and define equal-contract comparison gates after
+the working demo and ten-Group performance phase.
 
-- Deterministic fixture release gates.
-- Best-effort live smoke tests.
+### Agent execution is bounded
 
-### P1 — Live candidate count was an unstable completion gate
+Revision 3 defines:
 
-“Discover at least five Page candidates” depends on search ranking, geography, connectivity, and source behavior.
+- Work-item identifiers.
+- Dependencies.
+- Safe execution waves.
+- Disjoint file ownership.
+- Required tests.
+- Evidence receipts.
+- Coordinator-owned integration.
+- Final closure gates.
 
-The deterministic demonstration should use fixtures. A live campaign should be recorded as a smoke test rather than a hard release gate.
+This structure supports repeated agent work without losing scope or evidence.
 
-### P1 — Session security appeared before session scope
+## Residual risks
 
-DPAPI and cookie preparation were included while Phase 1 deferred signed-in collection.
+### Source-layout drift
 
-This created scope ambiguity. Cookie import belongs in the Group phase.
+Private Group layouts and session flows can change.
 
-### P1 — Job and health states were not enumerated
+Mitigation:
 
-Fresh sessions need exact state vocabularies to prevent incompatible implementations.
+- Immutable raw captures.
+- Versioned parsers.
+- Replay fixtures.
+- Mutation tests.
+- Explicit parser-drift states.
 
-### P2 — Dependency and package decisions were missing
+### Session instability
 
-The plan did not choose:
+Sessions can expire, receive challenges, or lose Group visibility.
 
-- CLI framework.
-- Schema library.
-- Browser library.
-- HTML parser.
-- SQLite access strategy.
-- Raw-capture compression format.
+Mitigation:
 
-### P2 — Fresh-session reading order was missing
+- Explicit health states.
+- Pre-run inspection.
+- Equal session preparation methods.
+- Durable job states.
+- No silent success.
 
-The workspace contains several overlapping research documents.
+### Comment workload variability
 
-A new session needs a short source-of-truth order and explicit precedence.
+One post can contain many top-level comments.
 
-## Corrections applied to Revision 2
+Phase 1 prioritizes correctness and records workload size. Phase 2 adds workload
+classes, budgets, and optimization.
 
-Revision 2:
+### Discovery variability
 
-1. Records the remote and local repository state.
-2. Defines a fresh-session bootstrap order.
-3. Selects Python 3.12, Typer, Pydantic, Playwright, BeautifulSoup and standard-library SQLite.
-4. Uses SHA-256 and gzip.
-5. Selects a Playwright public capture adapter plus replay adapter.
-6. Defines a DuckDuckGo HTML discovery adapter with CSV/URL fallback.
-7. Separates fixture release gates from live smoke tests.
-8. Adds non-interactive TOML execution.
-9. Defines job and collection-health states.
-10. Defers all cookie work.
-11. Adds exact repository structure, commands, outputs and completion receipts.
+Keyword-and-location results can vary by session and time.
 
+Fixture discovery gates deterministic behavior. The controlled demo records the
+exact query, candidates, timestamp, and health state.
+
+## Review conclusion
+
+Revision 3 is decision-complete for Phase 1.
+
+Implementation must follow the work-item graph and evidence gates. Performance
+optimization, competitor claims, and additional surfaces remain outside Phase 1.
