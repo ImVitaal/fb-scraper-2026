@@ -11,6 +11,7 @@ import typer
 
 from app import __version__
 from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
+from app.contracts.models import JobState
 from app.session import SessionProfileService, collect_guided_storage_state
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
@@ -115,13 +116,66 @@ def capture(
 
 
 @app.command()
-def inspect(run_id: str) -> None:
+def inspect(
+    run_id: str,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+) -> None:
     """Inspect one durable run."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            state = JobRepository(database.connection).get_state(run_id)
+            live = LiveRunRepository(database.connection).get(run_id)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(
+        json.dumps(
+            {
+                "canonical_url": live.canonical_url,
+                "group_id": live.group_id,
+                "job_id": run_id,
+                "lower_bound": live.lower_bound.isoformat(),
+                "state": state.value,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 @app.command()
-def resume(run_id: str) -> None:
+def resume(
+    run_id: str,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
     """Resume one interrupted run."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            live = LiveRunRepository(database.connection).get(run_id)
+            state = JobRepository(database.connection).get_state(run_id)
+            if state not in {JobState.INTERRUPTED, JobState.PARTIAL}:
+                raise ValueError("only interrupted or partial runs can resume")
+            storage_state = SessionProfileService(database.connection, session_root).read_state(
+                live.profile_id
+            )
+        html = PlaywrightGroupCaptureAdapter(storage_state).capture_group(live.canonical_url)
+        result = LiveCaptureWorkflow(output, raw_root).capture_html(run_id, html)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(
+        json.dumps(
+            {
+                "identifiers": list(result.identifiers),
+                "job_id": result.job_id,
+                "state": result.state.value,
+            },
+            sort_keys=True,
+        )
+    )
 
 
 @app.command()
