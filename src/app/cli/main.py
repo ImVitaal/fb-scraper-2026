@@ -26,7 +26,7 @@ from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
 from app.storage.repositories import JobRepository
 from app.targets import TargetPreparationService
-from app.workflows import FixtureWorkflow
+from app.workflows import BatchFixtureWorkflow, FixtureWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
 
 app = typer.Typer(
@@ -368,6 +368,22 @@ def replay(
     """Replay one stored raw capture without network access."""
     try:
         result = FixtureWorkflow(output, raw_root).replay(run_id, offline=offline)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+
+
+@app.command("batch-run")
+def batch_run(
+    fixtures: Annotated[Path, typer.Option("--fixtures", file_okay=False, readable=True)],
+    resume_batch: Annotated[bool, typer.Option("--resume")] = False,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+) -> None:
+    """Run up to ten synthetic Groups with isolated terminal states."""
+    try:
+        result = BatchFixtureWorkflow(output, raw_root).run(fixtures, resume=resume_batch)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error

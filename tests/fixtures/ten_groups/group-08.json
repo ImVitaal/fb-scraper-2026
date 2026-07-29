@@ -1,0 +1,57 @@
+{
+  "fixture_version": "1.0",
+  "captured_at": "2026-07-01T12:00:00Z",
+  "source_url": "https://example.test/groups/group-fixture-08",
+  "group": {
+    "group_id": "group-fixture-08",
+    "canonical_url": "https://example.test/groups/group-fixture-08",
+    "name": "Synthetic Fixture Group 08",
+    "privacy": "private",
+    "membership_state": "member",
+    "description": "Synthetic fixture data.",
+    "member_count": 42,
+    "observed_at": "2026-07-01T12:00:00Z"
+  },
+  "posts": [
+    {
+      "post_id": "post-fixture-08",
+      "group_id": "group-fixture-08",
+      "canonical_url": "https://example.test/posts/post-fixture-08",
+      "author_id": "author-fixture-01",
+      "author_name": "Fixture Author",
+      "published_at": "2026-06-30T12:00:00Z",
+      "observed_at": "2026-07-01T12:00:00Z",
+      "text": "Synthetic fixture post.",
+      "post_type": "text",
+      "media": [
+        {
+          "media_type": "image",
+          "source_url": "https://media.example.test/fixture-image.jpg",
+          "alt_text": "Synthetic image"
+        }
+      ],
+      "reactions": {
+        "like": 3
+      },
+      "comments_count": 1,
+      "shares_count": 0,
+      "comments": [
+        {
+          "comment_id": "comment-fixture-08",
+          "post_id": "post-fixture-08",
+          "group_id": "group-fixture-08",
+          "parent_comment_id": null,
+          "author_id": "author-fixture-02",
+          "author_name": "Fixture Commenter",
+          "published_at": "2026-06-30T12:05:00Z",
+          "observed_at": "2026-07-01T12:00:00Z",
+          "text": "Synthetic fixture comment.",
+          "media": [],
+          "reactions": {
+            "like": 1
+          }
+        }
+      ]
+    }
+  ]
+}
