@@ -1,5 +1,9 @@
 # Private Group Scanner — Phase 1 agent execution plan
 
+> **Execution note:** `LEAN_THREE_PHASE_COMPLETION_PLAN.md` supersedes this
+> document for current delivery. Keep this plan as a detailed historical
+> reference.
+
 **Revision:** 3
 **Date:** 2026-07-29
 **Status:** Decision-complete implementation source

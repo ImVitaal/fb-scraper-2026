@@ -1,5 +1,8 @@
 # Phase 1 critical review
 
+> **Execution note:** This review applies to the detailed Revision 3 plan.
+> `LEAN_THREE_PHASE_COMPLETION_PLAN.md` now controls delivery.
+
 **Review date:** 2026-07-29
 **Reviewed revision:** `PHASE_1_OPTIMAL_PLAN.md` Revision 3
 **Verdict:** Ready as the Phase 1 implementation source.

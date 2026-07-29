@@ -6,11 +6,12 @@ Before implementation:
 
 1. Read `README.md`.
 2. Read `FACEBOOK_PRODUCT_DISCOVERY_ANSWERS.md`.
-3. Read `PHASE_1_OPTIMAL_PLAN.md`.
+3. Read `LEAN_THREE_PHASE_COMPLETION_PLAN.md`.
 4. Read `PHASE_1_CRITICAL_REVIEW.md`.
 5. Confirm the repository, branch, work-item state, and verification state.
 
-Treat `PHASE_1_OPTIMAL_PLAN.md` as the Phase 1 implementation source of truth.
+Treat `LEAN_THREE_PHASE_COMPLETION_PLAN.md` as the current implementation source
+of truth. Use `PHASE_1_OPTIMAL_PLAN.md` only as a detailed historical reference.
 
 ## Four-phase direction
 
@@ -78,16 +79,17 @@ Use these supporting skills when applicable:
 
 ## Agent work rules
 
-- Claim one bounded `P1-XX` work item.
+- Claim one bounded milestone from the lean plan.
 - Check every dependency before action.
 - Use disjoint owned paths for concurrent agents.
 - Let the coordinator own shared contracts, migrations, and integration.
 - Write failing tests before implementation.
 - Implement the smallest complete behavior.
 - Record exact commands and artifacts.
-- Write the required evidence receipt.
 - Mark completion only after acceptance gates pass.
-- Do not broaden Phase 1 scope.
+- Keep one phase log and one completion receipt.
+- Do not create per-component evidence documents.
+- Do not broaden the active phase.
 - Do not use live private content in committed tests.
 
 ## Quality gates
@@ -104,13 +106,13 @@ Use these supporting skills when applicable:
 
 ## Development workflow
 
-1. Claim the work item.
-2. Define or update the contract.
-3. Add redacted fixtures.
-4. Write failing tests.
-5. Implement the smallest complete behavior.
+1. Claim the milestone.
+2. Define one operator-visible result.
+3. Add the smallest synthetic fixture.
+4. Write failing behavior tests.
+5. Implement the complete vertical behavior.
 6. Run Ruff formatting and linting.
 7. Run `ty` type checks.
-8. Run unit, replay, integration, and end-to-end tests.
+8. Run relevant tests and the milestone command.
 9. Simplify without weakening tests.
-10. Record verification evidence.
+10. Update the phase log.

@@ -169,7 +169,8 @@ Phase 1 completes only when:
 
 ## Agent execution
 
-`PHASE_1_OPTIMAL_PLAN.md` is the Phase 1 implementation source of truth.
+`LEAN_THREE_PHASE_COMPLETION_PLAN.md` is the current implementation source of
+truth. `PHASE_1_OPTIMAL_PLAN.md` remains a detailed historical reference.
 
 Agents must:
 
