@@ -43,7 +43,6 @@ module-root = "src"
 [tool.ruff]
 target-version = "py312"
 line-length = 100
-extend-exclude = ["TOP_GITHUB_FACEBOOK_SCRAPERS_ARCHITECTURE_ANALYSIS.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]

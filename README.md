@@ -170,7 +170,7 @@ Phase 1 completes only when:
 ## Agent execution
 
 `LEAN_THREE_PHASE_COMPLETION_PLAN.md` is the current implementation source of
-truth. `PHASE_1_OPTIMAL_PLAN.md` remains a detailed historical reference.
+truth. Record progress in `docs/phase-1/phase-1-log.md`.
 
 Agents must:
 

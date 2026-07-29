@@ -2,9 +2,9 @@
 
 ## Scope
 
-Follow `AGENTS.md` and `PHASE_1_OPTIMAL_PLAN.md`.
+Follow `AGENTS.md` and `LEAN_THREE_PHASE_COMPLETION_PLAN.md`.
 
-Claim one `P1-XX` work item. Check every dependency before editing.
+Claim one lean milestone. Check every dependency before editing.
 
 Do not start Phase 2 work before the Phase 1 exit gate passes.
 
@@ -17,11 +17,10 @@ Do not start Phase 2 work before the Phase 1 exit gate passes.
 5. Run `uv run ty check`.
 6. Run `uv run pytest`.
 7. Run `uv build`.
-8. Record an evidence receipt.
+8. Update the phase log.
 
 ## Data rules
 
 Use synthetic or redacted fixtures.
 
 Keep sessions, passwords, private captures, and exports outside Git.
-

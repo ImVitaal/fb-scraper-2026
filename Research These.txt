@@ -1,9 +1,0 @@
-https://chayuto.com/blog/building-free-facebook-scraper-tools/
-
-[ChocoData-com/facebook-scraper](https://github.com/ChocoData-com/facebook-scraper)
-
-https://phantombuster.com/
-
-https://thunderbit.com/blog/facebook-scraper-github-guide
-
-https://chayuto.com/blog/building-free-facebook-scraper-tools/

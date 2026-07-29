@@ -7,11 +7,12 @@ Before implementation:
 1. Read `README.md`.
 2. Read `FACEBOOK_PRODUCT_DISCOVERY_ANSWERS.md`.
 3. Read `LEAN_THREE_PHASE_COMPLETION_PLAN.md`.
-4. Read `PHASE_1_CRITICAL_REVIEW.md`.
-5. Confirm the repository, branch, work-item state, and verification state.
+4. Read `docs/phase-1/phase-1-log.md`.
+5. Read `SESSION_STATE.md`.
+6. Confirm the repository, branch, milestone state, and verification state.
 
 Treat `LEAN_THREE_PHASE_COMPLETION_PLAN.md` as the current implementation source
-of truth. Use `PHASE_1_OPTIMAL_PLAN.md` only as a detailed historical reference.
+of truth.
 
 ## Four-phase direction
 
