@@ -1,0 +1,75 @@
+[build-system]
+requires = ["uv-build>=0.8.0,<0.12.0"]
+build-backend = "uv_build"
+
+[project]
+name = "private-group-scanner"
+version = "0.1.0"
+description = "A local, replayable, resumable private-Group collection workflow."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Private Group Scanner contributors" }]
+dependencies = [
+  "beautifulsoup4>=4.13.0,<5",
+  "lxml>=5.3.0,<7",
+  "playwright>=1.50.0,<2",
+  "pydantic>=2.10.0,<3",
+  "typer>=0.15.0,<1",
+]
+
+[project.scripts]
+pgscan = "app.cli.main:main"
+
+[dependency-groups]
+dev = [
+  "build>=1.2.0,<2",
+  "detect-secrets>=1.5.0,<2",
+  "hypothesis>=6.120.0,<7",
+  "pip-audit>=2.8.0,<3",
+  "pytest>=8.3.0,<10",
+  "pytest-cov>=6.0.0,<8",
+  "ruff>=0.9.0,<1",
+  "ty>=0.0.1a20",
+]
+
+[tool.uv]
+package = true
+
+[tool.uv.build-backend]
+module-name = "app"
+module-root = "src"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["TOP_GITHUB_FACEBOOK_SCRAPERS_ARCHITECTURE_ANALYSIS.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--cov=app",
+  "--cov-report=term-missing",
+  "--cov-fail-under=80",
+]
+testpaths = ["tests"]
+markers = [
+  "integration: component integration tests",
+  "replay: offline replay tests",
+  "e2e: end-to-end workflow tests",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.ty.environment]
+python-version = "3.12"
