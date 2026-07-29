@@ -34,14 +34,16 @@ class LiveCaptureWorkflow:
         self.output = output
         self.raw_store = GzipRawCaptureStore(raw_root)
 
-    def capture_html(self, job_id: str, raw_html: bytes) -> LiveCaptureResult:
+    def capture_html(
+        self, job_id: str, raw_html: bytes, *, interrupt_after_checkpoint: bool = False
+    ) -> LiveCaptureResult:
         """Capture one supported Group page; repeated bytes remain idempotent."""
         with Database(self.output / "scanner.sqlite3") as database:
             database.migrate()
             live_run = LiveRunRepository(database.connection).get(job_id)
             jobs = JobRepository(database.connection)
             state = jobs.get_state(job_id)
-            if state is JobState.PLANNED:
+            if state in {JobState.PLANNED, JobState.INTERRUPTED, JobState.PARTIAL}:
                 jobs.transition(job_id, JobState.RUNNING)
             if jobs.get_state(job_id) is not JobState.RUNNING:
                 raise ValueError(f"live capture job is not runnable: {job_id}")
@@ -103,6 +105,9 @@ class LiveCaptureWorkflow:
                     """,
                     (f"checkpoint:{job_id}", job_id, capture_id, group.collected_at.isoformat()),
                 )
+            if interrupt_after_checkpoint:
+                jobs.transition(job_id, JobState.INTERRUPTED)
+                raise KeyboardInterrupt
             jobs.transition(job_id, JobState.SUCCEEDED)
         identifiers = [f"group:{group.group_id}"]
         identifiers.extend(f"post:{post.post_id}" for post in selected_posts)

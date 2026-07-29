@@ -40,7 +40,7 @@ class GzipRawCaptureStore:
         path = self.root / f"{capture_id}{suffix}.gz"
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
-            existing = self.read(capture_id, digest)
+            existing = self.read(capture_id, digest, suffix=suffix)
             if existing != raw_bytes:
                 raise RawCaptureIntegrityError(f"capture bytes conflict: {capture_id}")
         else:
