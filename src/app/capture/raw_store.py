@@ -30,12 +30,14 @@ class GzipRawCaptureStore:
     def __init__(self, root: Path) -> None:
         self.root = root
 
-    def write(self, capture_id: str, raw_bytes: bytes) -> StoredRawCapture:
+    def write(
+        self, capture_id: str, raw_bytes: bytes, *, suffix: str = ".json"
+    ) -> StoredRawCapture:
         """Write deterministic gzip bytes and return their verified metadata."""
         if not capture_id:
             raise ValueError("capture_id must be non-empty")
         digest = sha256(raw_bytes).hexdigest()
-        path = self.root / f"{capture_id}.json.gz"
+        path = self.root / f"{capture_id}{suffix}.gz"
         path.parent.mkdir(parents=True, exist_ok=True)
         if path.exists():
             existing = self.read(capture_id, digest)
@@ -45,9 +47,9 @@ class GzipRawCaptureStore:
             self._atomic_write(path, gzip.compress(raw_bytes, mtime=0))
         return StoredRawCapture(capture_id, digest, path, len(raw_bytes))
 
-    def read(self, capture_id: str, expected_sha256: str) -> bytes:
+    def read(self, capture_id: str, expected_sha256: str, *, suffix: str = ".json") -> bytes:
         """Read, decompress, and verify one capture against its recorded hash."""
-        path = self.root / f"{capture_id}.json.gz"
+        path = self.root / f"{capture_id}{suffix}.gz"
         try:
             raw_bytes = gzip.decompress(path.read_bytes())
         except (OSError, EOFError) as error:
