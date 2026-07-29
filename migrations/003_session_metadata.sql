@@ -1,0 +1,1 @@
+ALTER TABLE session_profiles ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';

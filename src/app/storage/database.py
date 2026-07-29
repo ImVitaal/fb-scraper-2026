@@ -26,6 +26,7 @@ class Database:
     def __init__(self, path: Path, migrations_path: Path | None = None) -> None:
         self.path = path
         self.migrations_path = migrations_path or self._default_migrations_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(path)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
