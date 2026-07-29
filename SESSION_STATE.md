@@ -1,6 +1,6 @@
 # Private Group Scanner — Session State
 
-**Updated:** 2026-07-29T15:49:22Z
+**Updated:** 2026-07-29T16:04:24Z
 **Sessions completed:** 2
 
 ## What happened this session
@@ -18,6 +18,11 @@ and committed the fixes as `be6e541`. Added immutable migration checksums,
 migration 002 upgrade guards, stale-write and identity protection, exact
 counter conflicts, UTC normalization, stricter contracts, and regression tests.
 
+Replaced the framework-first execution approach with the lean three-phase plan
+in `7758507`. The plan now requires working vertical behavior before new
+abstractions and covers Phase 1 completion, ten-Group Phase 2, and competitor
+proof in Phase 3.
+
 ## Current counts
 
 - Phase 1 work items recorded: 3.
@@ -28,7 +33,7 @@ counter conflicts, UTC normalization, stricter contracts, and regression tests.
 - Source Python files: 9.
 - Test Python files: 3.
 - Build artifacts: 2 package artifacts.
-- Git position: `main` contains `be6e541` and is seven commits ahead of `origin/main`.
+- Git position: `main` contains `7758507` and is nine commits ahead of `origin/main`.
 - Accepted P1-01 and P1-02 workspace additions are committed.
 - Hash-eligible JSON, TXT, or CSV evidence files: 0.
 
@@ -38,20 +43,22 @@ counter conflicts, UTC normalization, stricter contracts, and regression tests.
 |---|---|---|---|
 | 1 | P1-00 baseline | Complete and committed | Preserve as dependency baseline |
 | 2 | P1-01 package and tools | Complete and committed | Preserve as package baseline |
-| 3 | P1-02 contracts and storage | Complete and committed | Release dependency-safe core lanes |
-| 4 | Luna side-agent operation | Configured and verified | Assign bounded work through `luna` |
+| 3 | P1-02 contracts and storage | Complete and committed | Keep frozen unless a workflow test fails |
+| 4 | Lean Milestone 1A | Ready | Build one fixture-backed raw-to-replay CLI slice |
+| 5 | Luna side-agent operation | Configured and verified | Assign bounded work through `luna` |
 
 ## Pending work (priority order)
 
-1. Start P1-03, P1-04, and P1-05 only across dependency-safe, disjoint lanes.
-2. Keep root ownership of migrations, shared contracts, integration, and commits.
-3. Integrate and verify the full core wave before releasing P1-06 through P1-08.
-4. Continue work-item order through P1-13. Verify, record evidence, and commit
-   each accepted item before releasing dependent work.
+1. Start lean Milestone 1A.
+2. Deliver gzip raw storage, hashing, one fixture parser path, SQLite, replay,
+   JSON, CSV, and one CLI command.
+3. Demonstrate identical identifiers between the run and offline replay.
+4. Avoid new framework code unless a failing workflow test requires it.
 
 ## Constraints
 
-- Treat `PHASE_1_OPTIMAL_PLAN.md` Revision 3 as the Phase 1 source of truth.
+- Treat `LEAN_THREE_PHASE_COMPLETION_PLAN.md` as the execution source of truth.
+- Keep `PHASE_1_OPTIMAL_PLAN.md` as a detailed historical reference.
 - Complete Phase 1 before starting Phase 2.
 - Use Python 3.12 or newer on native Windows.
 - Write failing tests before implementation.
@@ -75,6 +82,9 @@ counter conflicts, UTC normalization, stricter contracts, and regression tests.
 - Preserve changing counters as immutable observation history.
 - Reject stale canonical writes and parent-identity mutation.
 - Treat counter-key collisions as explicit evidence conflicts.
+- Deliver operator-visible behavior before new abstractions.
+- Maintain one phase log and one completion report per phase.
+- Keep only one active lean milestone.
 - Use the global `luna-side-agent` profile for Luna high child-agent controls.
 - Keep root as the commit and integration owner.
 
@@ -97,4 +107,8 @@ counter conflicts, UTC normalization, stricter contracts, and regression tests.
 - `docs/phase-1/evidence/P1-02-receipt.md` — P1-02 verification evidence.
 - `docs/phase-1/reviews/P1-02-critical-review.md` — findings and dispositions.
 - `docs/phase-1/evidence/P1-02-critical-review-receipt.md` — corrective evidence.
+- `LEAN_THREE_PHASE_COMPLETION_PLAN.md` — current three-phase execution source.
+- `AGENTS.md` and `README.md` — lean-plan routing and execution rules.
+- `PHASE_1_OPTIMAL_PLAN.md` — historical-plan notice.
+- `PHASE_1_CRITICAL_REVIEW.md` — historical-review notice.
 - `SESSION_STATE.md` — this handoff snapshot.
