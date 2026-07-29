@@ -1,0 +1,248 @@
+{
+  "schema_version": "1.0",
+  "tool": "local-fixture",
+  "duration_seconds": 1.6,
+  "cost": 0.0,
+  "records": [
+    {
+      "identifier": "group:group-fixture-01",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-01",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-01",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-02",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-02",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-02",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-03",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-03",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-03",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-04",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-04",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-04",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-05",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-05",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-05",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-06",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-06",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-06",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-07",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-07",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-07",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-08",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-08",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-08",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-09",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-09",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-09",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "group:group-fixture-10",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "post:post-fixture-10",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    },
+    {
+      "identifier": "comment:comment-fixture-10",
+      "expected": true,
+      "observed": true,
+      "expected_required_fields": 8,
+      "observed_required_fields": 8,
+      "unsupported_fields": []
+    }
+  ]
+}

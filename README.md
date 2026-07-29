@@ -208,5 +208,23 @@ uv run pgscan replay $result.run_id --offline --output $output --raw-root $raw
 Run `uv run pgscan run --guided` for the connected operator workflow.
 Use a strict TOML file for repeatable session, discovery, selection, and capture.
 
+Run the ten-Group synthetic reliability workflow:
+
+```powershell
+uv run pgscan batch-run `
+  --fixtures tests/fixtures/ten_groups `
+  --output $output `
+  --raw-root $raw
+```
+
+Run the direct fixture comparison:
+
+```powershell
+uv run pgscan compare `
+  --first tests/fixtures/comparison/local-results.json `
+  --second tests/fixtures/comparison/competitor-results.csv `
+  --output $output
+```
+
 The repository contains the package, migrations, synthetic fixtures, tests, and working
-Phase 1 commands. See `docs/phase-1/phase-1-completion-report.md` for verified limits.
+Phase 1 through Phase 3 commands. See the phase completion reports for verified limits.

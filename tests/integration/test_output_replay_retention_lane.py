@@ -82,6 +82,20 @@ def test_fixture_outputs_and_measurement_receipts_share_identifiers(tmp_path: Pa
         assert receipt["storage_delta_bytes"] >= 0
 
 
+def test_manifest_hash_is_independent_of_operator_output_root(tmp_path: Path) -> None:
+    first = FixtureWorkflow(tmp_path / "first-output", tmp_path / "first-raw").run(FIXTURE)
+    second = FixtureWorkflow(tmp_path / "second-output", tmp_path / "second-raw").run(FIXTURE)
+
+    first_manifest = (
+        tmp_path / "first-output" / "exports" / f"{first.run_id}.manifest.json"
+    ).read_bytes()
+    second_manifest = (
+        tmp_path / "second-output" / "exports" / f"{second.run_id}.manifest.json"
+    ).read_bytes()
+
+    assert first_manifest == second_manifest
+
+
 def test_stored_html_replay_is_offline_and_exports_matching_identifiers(
     tmp_path: Path,
 ) -> None:

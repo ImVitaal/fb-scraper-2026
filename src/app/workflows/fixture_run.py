@@ -320,7 +320,7 @@ class FixtureWorkflow:
             "normalized_sha256": normalized_sha256,
             "run_id": run_id,
             "schema_version": "1.0",
-            "sqlite": str(self.database_path),
+            "sqlite": self.database_path.name,
         }
         manifest_bytes = json.dumps(
             manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False

@@ -26,7 +26,7 @@ from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
 from app.storage.repositories import JobRepository
 from app.targets import TargetPreparationService
-from app.workflows import BatchFixtureWorkflow, FixtureWorkflow
+from app.workflows import BatchFixtureWorkflow, FixtureComparisonWorkflow, FixtureWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
 
 app = typer.Typer(
@@ -384,6 +384,21 @@ def batch_run(
     """Run up to ten synthetic Groups with isolated terminal states."""
     try:
         result = BatchFixtureWorkflow(output, raw_root).run(fixtures, resume=resume_batch)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+
+
+@app.command("compare")
+def compare(
+    first: Annotated[Path, typer.Option("--first", dir_okay=False, readable=True)],
+    second: Annotated[Path, typer.Option("--second", dir_okay=False, readable=True)],
+    output: Annotated[Path, typer.Option("--output")],
+) -> None:
+    """Compare two direct CSV or JSON fixture result files."""
+    try:
+        result = FixtureComparisonWorkflow(output).compare(first, second)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error

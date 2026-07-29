@@ -64,7 +64,7 @@ uv run detect-secrets scan --all-files
 - standalone SQLite SHA-256:
   `6801f3a11e2cb593e070ef221e56ae6f5148231370196c688fb4ac3d1ec23995`
 - manifest SHA-256:
-  `652a0b49a037a1905ec68af9a058734287b75984cb408573ad1abe79fab505c9`
+  `b52a5f370b6388aeba657fc6df2311323fa2b1bfa028762bd0e4c5b960eec6be`
 - Markdown SHA-256:
   `31e1c66ec8f4d28909462bc392c143e51cd98fed35f36815a8bf99656e8f66b2`
 
