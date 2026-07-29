@@ -40,6 +40,8 @@ def test_csv_requires_an_explicit_candidate_and_selects_one(tmp_path: Path) -> N
         campaign = service.add_csv(csv_path)
         assert len(campaign.candidates) == 2
         selected = service.select(campaign.campaign_id, campaign.candidates[1].candidate_id)
+        repeated = service.select(campaign.campaign_id, campaign.candidates[1].candidate_id)
 
     assert selected.group_id == "group-2"
     assert selected.source == "csv"
+    assert repeated == selected

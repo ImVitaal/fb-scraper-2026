@@ -110,6 +110,20 @@ class TargetPreparationService:
         ).fetchone()
         if row is None:
             raise TargetPreparationError("candidate does not belong to campaign")
+        existing = self.connection.execute(
+            "SELECT candidate_hit_id FROM selected_targets WHERE campaign_id = ?", (campaign_id,)
+        ).fetchone()
+        if existing is not None:
+            if existing["candidate_hit_id"] == candidate_id:
+                return SelectedTarget(
+                    campaign_id,
+                    row["hit_id"],
+                    row["group_id"],
+                    row["canonical_url"],
+                    row["name"],
+                    row["source"],
+                )
+            raise TargetPreparationError("campaign already has a different selected target")
         now = datetime.now(UTC).isoformat()
         with self.connection:
             try:
