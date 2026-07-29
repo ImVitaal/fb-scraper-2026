@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.session.profiles import SessionProfileService
+import pytest
+
+from app.session.profiles import SessionEnvelopeError, SessionProfileService
 from app.storage.database import Database
 
 
@@ -44,3 +46,22 @@ def test_tampered_session_envelope_fails_closed(tmp_path: Path) -> None:
         (tmp_path / "private-sessions" / "profile-tampered.dpapi").write_bytes(b"tampered")
 
         assert service.inspect("profile-tampered").health == "session_invalid"
+
+
+def test_profile_rejects_path_traversal_and_valid_dpapi_envelope_swaps(tmp_path: Path) -> None:
+    state = {"cookies": [], "origins": [{"origin": "https://example.test", "localStorage": []}]}
+    second_state = {
+        "cookies": [],
+        "origins": [{"origin": "https://other.test", "localStorage": []}],
+    }
+    with Database(tmp_path / "scanner.sqlite3") as database:
+        database.migrate()
+        root = tmp_path / "private-sessions"
+        service = SessionProfileService(database.connection, root)
+        with pytest.raises(SessionEnvelopeError):
+            service.import_state("../outside", state)
+        service.import_state("profile-one", state)
+        service.import_state("profile-two", second_state)
+        (root / "profile-one.dpapi").write_bytes((root / "profile-two.dpapi").read_bytes())
+
+        assert service.inspect("profile-one").health == "session_invalid"

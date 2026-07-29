@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from re import fullmatch
 from tempfile import NamedTemporaryFile
 from typing import TypedDict, cast
 
@@ -63,10 +64,18 @@ class SessionProfileService:
         """Validate, encrypt, and persist an imported Playwright storage state."""
         return self._save(profile_id, "imported", "imported_storage_state", state)
 
+    def save_guided_state(self, profile_id: str, state: Mapping[str, object]) -> SessionMetadata:
+        """Persist a visible guided-login state with the imported-state metadata contract."""
+        return self._save(profile_id, "guided_login", "playwright_chromium", state)
+
     def read_state(self, profile_id: str) -> StorageState:
         """Decrypt and validate a session envelope for browser-context recreation."""
         try:
-            plaintext = unprotect_for_current_user(self._path(profile_id).read_bytes())
+            encrypted = self._path(profile_id).read_bytes()
+            metadata = json.loads(self._row(profile_id)["metadata_json"])
+            if sha256(encrypted).hexdigest() != metadata.get("encrypted_sha256"):
+                raise SessionEnvelopeError("session envelope hash mismatch")
+            plaintext = unprotect_for_current_user(encrypted)
             state = json.loads(plaintext)
             return self._validate_state(state)
         except (DpapiError, OSError, json.JSONDecodeError, SessionEnvelopeError) as error:
@@ -84,6 +93,17 @@ class SessionProfileService:
         except SessionEnvelopeError:
             row = self._row(profile_id)
         return self._metadata(row)
+
+    def delete(self, profile_id: str) -> None:
+        """Delete one encrypted envelope and its non-secret profile metadata."""
+        self._row(profile_id)
+        path = self._path(profile_id)
+        if path.exists():
+            path.unlink()
+        with self.connection:
+            self.connection.execute(
+                "DELETE FROM session_profiles WHERE profile_id = ?", (profile_id,)
+            )
 
     def _save(
         self,
@@ -141,7 +161,14 @@ class SessionProfileService:
         temporary.replace(path)
 
     def _path(self, profile_id: str) -> Path:
-        return self.session_root / f"{profile_id}.dpapi"
+        if fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", profile_id) is None:
+            raise SessionEnvelopeError(
+                "profile_id must use letters, numbers, underscores, or hyphens"
+            )
+        path = (self.session_root / f"{profile_id}.dpapi").resolve()
+        if not path.is_relative_to(self.session_root):
+            raise SessionEnvelopeError("profile path is outside the session root")
+        return path
 
     def _row(self, profile_id: str) -> sqlite3.Row:
         row = self.connection.execute(

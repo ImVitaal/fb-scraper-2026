@@ -8,6 +8,8 @@ from typing import Annotated
 import typer
 
 from app import __version__
+from app.session import SessionProfileService, collect_guided_storage_state
+from app.storage.database import Database
 from app.workflows import FixtureWorkflow
 
 app = typer.Typer(
@@ -44,6 +46,7 @@ def _default_output() -> Path:
 
 DEFAULT_OUTPUT = _default_output()
 DEFAULT_RAW_ROOT = DEFAULT_OUTPUT / "raw"
+DEFAULT_SESSION_ROOT = DEFAULT_OUTPUT / "sessions"
 
 
 @app.command()
@@ -97,23 +100,85 @@ def clean(
 
 
 @session_app.command("import")
-def import_session() -> None:
+def import_session(
+    profile: Annotated[str, typer.Option("--profile")],
+    state_file: Annotated[
+        Path, typer.Option("--state-file", exists=True, dir_okay=False, readable=True)
+    ],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
     """Import supported local browser session material."""
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            metadata = SessionProfileService(database.connection, session_root).import_state(
+                profile, state
+            )
+    except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
 
 
 @session_app.command()
-def login() -> None:
+def login(
+    profile: Annotated[str, typer.Option("--profile")],
+    start_url: Annotated[str, typer.Option("--start-url")] = "https://www.facebook.com/",
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
     """Prepare a session through a visible guided login."""
+    try:
+        state = collect_guided_storage_state(start_url)
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            metadata = SessionProfileService(database.connection, session_root).save_guided_state(
+                profile, state
+            )
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
 
 
-@session_app.command()
-def inspect_session() -> None:
+@session_app.command("inspect")
+def inspect_session(
+    profile: Annotated[str, typer.Option("--profile")],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
     """Inspect session metadata without revealing secrets."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            metadata = SessionProfileService(database.connection, session_root).inspect(profile)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
 
 
 @session_app.command()
-def delete() -> None:
+def delete(
+    profile: Annotated[str, typer.Option("--profile")],
+    yes: Annotated[bool, typer.Option("--yes")] = False,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
     """Delete an encrypted session profile."""
+    if not yes:
+        typer.echo("error: pass --yes to delete a session profile")
+        raise typer.Exit(1)
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            SessionProfileService(database.connection, session_root).delete(profile)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps({"deleted": profile}, sort_keys=True))
 
 
 def main() -> None:
