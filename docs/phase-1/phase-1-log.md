@@ -87,3 +87,25 @@ Milestone 1C must deliver a resumable controlled Group capture:
 2. Store each raw page before parsing and checkpoint before the next interaction.
 3. Resume an interrupted run with the identical canonical identifier set.
 4. Report unsupported layouts as non-success health states.
+
+## In-progress 1C and 1D work
+
+- Added a deterministic checkpoint-first pagination helper with page bounds and loop detection.
+- Added strict keyword-and-location discovery parsing and durable discovery candidate selection.
+- Live layout drift now preserves raw HTML, records `parser_drift`, and transitions the job to `failed`.
+- Added JSON manifest, Markdown report, SQLite export-manifest receipt, and dry-run-by-default retention cleanup.
+- The controlled browser Group capture, multi-page browser integration, TOML mode, measurements, and Phase 1 completion run remain open.
+
+### Current verification
+
+```powershell
+uv run ruff format --check .
+uv run ruff check .
+uv run ty check
+uv run pytest
+```
+
+- Tests: 52 passed.
+- Coverage: 81.56%.
+- Ruff and `ty`: passed.
+- Latest implementation commit: `9a0cf70`.
