@@ -12,6 +12,7 @@ import typer
 from app import __version__
 from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
 from app.contracts.models import JobState
+from app.retention import RetentionService
 from app.session import SessionProfileService, collect_guided_storage_state
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
@@ -198,9 +199,25 @@ def replay(
 def clean(
     raw_older_than: str = "30d",
     normalized_older_than: str = "90d",
-    dry_run: bool = True,
+    apply: Annotated[bool, typer.Option("--apply")] = False,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
 ) -> None:
     """Apply configured retention periods."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            receipts = RetentionService(database.connection, raw_root).clean(
+                raw_older_than=raw_older_than,
+                normalized_older_than=normalized_older_than,
+                dry_run=not apply,
+            )
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(
+        json.dumps({"receipts": [receipt.as_dict() for receipt in receipts]}, sort_keys=True)
+    )
 
 
 @session_app.command("import")
@@ -299,6 +316,29 @@ def add_url(
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
     typer.echo(json.dumps(selected.as_dict(), sort_keys=True))
+
+
+@target_app.command("discover")
+def discover_target(
+    fixture: Annotated[Path, typer.Option("--fixture", exists=True, dir_okay=False, readable=True)],
+    keyword: Annotated[str, typer.Option("--keyword")],
+    location: Annotated[str, typer.Option("--location")],
+    select: Annotated[str | None, typer.Option("--select")] = None,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+) -> None:
+    """Create candidates from a captured keyword-and-location discovery result."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            service = TargetPreparationService(database.connection)
+            campaign = service.add_discovery(
+                fixture.read_bytes(), keyword=keyword, location=location
+            )
+            result = service.select(campaign.campaign_id, select) if select else campaign
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
 
 
 @target_app.command("add-csv")

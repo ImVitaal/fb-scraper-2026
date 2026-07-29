@@ -266,7 +266,67 @@ class FixtureWorkflow:
                         ),
                     }
                 )
+        markdown_path = exports / f"{run_id}.md"
+        markdown_path.write_text(
+            self._markdown_report(run_id, normalized_sha256, identifiers), encoding="utf-8"
+        )
+        manifest_path = exports / f"{run_id}.manifest.json"
+        manifest = {
+            "files": {
+                "csv": self._file_sha256(csv_path),
+                "json": self._file_sha256(json_path),
+                "markdown": self._file_sha256(markdown_path),
+            },
+            "identifiers": list(identifiers),
+            "normalized_sha256": normalized_sha256,
+            "run_id": run_id,
+            "schema_version": "1.0",
+            "sqlite": str(self.database_path),
+        }
+        manifest_bytes = json.dumps(
+            manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        manifest_path.write_bytes(manifest_bytes)
+        self._record_manifest(run_id, manifest_path, sha256(manifest_bytes).hexdigest())
         return WorkflowResult(run_id, identifiers, normalized_sha256, self.output)
+
+    def _record_manifest(self, run_id: str, manifest_path: Path, manifest_sha256: str) -> None:
+        """Persist the operator-visible manifest receipt beside its SQLite output."""
+        with Database(self.database_path) as database:
+            database.migrate()
+            with database.connection:
+                database.connection.execute(
+                    """
+                    INSERT INTO export_manifests(
+                        manifest_id, job_id, schema_version, output_path, sha256, created_at
+                    ) VALUES (?, ?, '1.0', ?, ?, datetime('now'))
+                    ON CONFLICT(manifest_id) DO UPDATE SET
+                        output_path = excluded.output_path,
+                        sha256 = excluded.sha256,
+                        created_at = excluded.created_at
+                    """,
+                    (f"manifest:{run_id}", run_id, str(manifest_path), manifest_sha256),
+                )
+
+    @staticmethod
+    def _markdown_report(run_id: str, normalized_sha256: str, identifiers: tuple[str, ...]) -> str:
+        """Build a deterministic human-readable export with the canonical identifiers."""
+        lines = [
+            "# Private Group Scanner export",
+            "",
+            f"- Run ID: `{run_id}`",
+            f"- Normalized SHA-256: `{normalized_sha256}`",
+            "",
+            "## Canonical identifiers",
+            "",
+        ]
+        lines.extend(f"- `{identifier}`" for identifier in identifiers)
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _file_sha256(path: Path) -> str:
+        """Return the SHA-256 for one completed export file."""
+        return sha256(path.read_bytes()).hexdigest()
 
     @staticmethod
     def _record_rows(

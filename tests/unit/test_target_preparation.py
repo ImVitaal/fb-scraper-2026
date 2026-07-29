@@ -45,3 +45,30 @@ def test_csv_requires_an_explicit_candidate_and_selects_one(tmp_path: Path) -> N
     assert selected.group_id == "group-2"
     assert selected.source == "csv"
     assert repeated == selected
+
+
+def test_discovery_persists_keyword_location_candidates_and_one_selection(tmp_path: Path) -> None:
+    discovery_html = b"""
+    <section data-pgscan-discovery="1" data-keyword="garden" data-location="Bristol">
+      <article data-pgscan-candidate="1" data-group-id="garden-1"
+        data-canonical-url="https://example.test/groups/garden-1" data-name="Garden One"
+        data-keyword-score="1" data-location-score="0.5"></article>
+      <article data-pgscan-candidate="1" data-group-id="garden-2"
+        data-canonical-url="https://example.test/groups/garden-2" data-name="Garden Two"
+        data-keyword-score="0.9" data-location-score="1"></article>
+    </section>
+    """
+    with Database(tmp_path / "scanner.sqlite3") as database:
+        database.migrate()
+        service = TargetPreparationService(database.connection)
+        campaign = service.add_discovery(discovery_html, keyword="garden", location="Bristol")
+        selected = service.select(campaign.campaign_id, campaign.candidates[0].candidate_id)
+        query = database.connection.execute(
+            "SELECT keyword, location FROM discovery_queries WHERE campaign_id = ?",
+            (campaign.campaign_id,),
+        ).fetchone()
+
+    assert [candidate.group_id for candidate in campaign.candidates] == ["garden-2", "garden-1"]
+    assert selected.group_id == "garden-2"
+    assert selected.source == "discovery"
+    assert dict(query) == {"keyword": "garden", "location": "Bristol"}

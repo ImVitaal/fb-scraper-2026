@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
 from app.capture import GzipRawCaptureStore
 from app.contracts.models import JobState
-from app.parsing.live_group import LiveGroupParser
+from app.parsing.live_group import LiveGroupParser, UnsupportedLayoutError
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
 from app.storage.repositories import (
@@ -50,13 +51,17 @@ class LiveCaptureWorkflow:
             raw_sha256 = sha256(raw_html).hexdigest()
             capture_id = sha256(f"{job_id}|group-root|{raw_sha256}".encode()).hexdigest()
             stored = self.raw_store.write(capture_id, raw_html, suffix=".html")
-            group, posts, comments = LiveGroupParser().parse(
-                raw_html,
-                source_url=live_run.canonical_url,
-                capture_id=capture_id,
-                raw_sha256=stored.sha256,
-                session_class="fixture",
-            )
+            try:
+                group, posts, comments = LiveGroupParser().parse(
+                    raw_html,
+                    source_url=live_run.canonical_url,
+                    capture_id=capture_id,
+                    raw_sha256=stored.sha256,
+                    session_class="fixture",
+                )
+            except UnsupportedLayoutError as error:
+                self._record_parser_drift(database, jobs, job_id, capture_id, str(error))
+                raise
             if group.group_id != live_run.group_id:
                 raise ValueError("captured Group does not match selected target")
             captures = RawCaptureMetadataRepository(database.connection)
@@ -117,3 +122,46 @@ class LiveCaptureWorkflow:
             if comment.post_id in selected_ids
         )
         return LiveCaptureResult(job_id, tuple(sorted(identifiers)), JobState.SUCCEEDED)
+
+    @staticmethod
+    def _record_parser_drift(
+        database: Database,
+        jobs: JobRepository,
+        job_id: str,
+        capture_id: str,
+        message: str,
+    ) -> None:
+        """Record parser drift after the raw bytes have been preserved."""
+        recorded_at = datetime.now(UTC).isoformat()
+        with database.connection:
+            database.connection.execute(
+                """
+                INSERT OR IGNORE INTO tasks(
+                    task_id, job_id, idempotency_key, surface, state, created_at, updated_at
+                ) VALUES (?, ?, ?, 'group', 'failed', ?, ?)
+                """,
+                (job_id, job_id, f"group:{job_id}", recorded_at, recorded_at),
+            )
+            database.connection.execute(
+                """
+                INSERT OR IGNORE INTO attempts(
+                    attempt_id, task_id, attempt_number, health, started_at, finished_at
+                ) VALUES (?, ?, 1, 'parser_drift', ?, ?)
+                """,
+                (f"attempt:{job_id}:1", job_id, recorded_at, recorded_at),
+            )
+            database.connection.execute(
+                """
+                INSERT OR IGNORE INTO failures(
+                    failure_id, attempt_id, failure_class, message, recorded_at
+                ) VALUES (?, ?, 'parser_drift', ?, ?)
+                """,
+                (
+                    f"failure:{job_id}:1",
+                    f"attempt:{job_id}:1",
+                    f"{capture_id}: {message}",
+                    recorded_at,
+                ),
+            )
+        if jobs.get_state(job_id) is JobState.RUNNING:
+            jobs.transition(job_id, JobState.FAILED)

@@ -10,6 +10,8 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
+from app.discovery import DiscoveryParser
+
 
 class TargetPreparationError(ValueError):
     """Raised when a target input or selection is not valid."""
@@ -94,6 +96,24 @@ class TargetPreparationService:
         candidates = [
             self._add_candidate(campaign, item.canonical_url, item.name, "csv", item.rank)
             for item in prepared
+        ]
+        return TargetCampaign(campaign, tuple(candidates))
+
+    def add_discovery(self, raw_html: bytes, *, keyword: str, location: str) -> TargetCampaign:
+        """Persist ranked candidates from one supported discovery-page capture."""
+        result = DiscoveryParser().parse(raw_html, keyword=keyword, location=location)
+        if not result.candidates:
+            raise TargetPreparationError("discovery returned no Group candidates")
+        campaign = self._create_campaign(result.keyword, result.location)
+        candidates = [
+            self._add_candidate(
+                campaign,
+                candidate.canonical_url,
+                candidate.name,
+                "discovery",
+                candidate.rank,
+            )
+            for candidate in result.candidates
         ]
         return TargetCampaign(campaign, tuple(candidates))
 
