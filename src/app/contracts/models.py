@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import StrEnum
-from typing import ClassVar, Self
+from typing import ClassVar, Literal, Self
 
 from pydantic import (
     BaseModel,
@@ -78,6 +78,14 @@ class NullReason(StrEnum):
     NOT_APPLICABLE = "not_applicable"
 
 
+class EntityType(StrEnum):
+    """Canonical entity types that can own observations."""
+
+    GROUP = "group"
+    POST = "post"
+    COMMENT = "comment"
+
+
 class FieldProvenance(BaseModel):
     """Evidence describing where one normalized field came from."""
 
@@ -102,6 +110,16 @@ def _require_aware(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         message = "datetime must be timezone-aware"
         raise ValueError(message)
+    return value.astimezone(UTC)
+
+
+def _validate_reactions(value: dict[str, int]) -> dict[str, int]:
+    if any(not reaction.strip() for reaction in value):
+        message = "reaction names must be non-empty"
+        raise ValueError(message)
+    if any(count < 0 for count in value.values()):
+        message = "reaction counts must be non-negative"
+        raise ValueError(message)
     return value
 
 
@@ -110,7 +128,7 @@ class EvidenceFields(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    schema_version: str = Field(default="1.0", pattern=r"^\d+\.\d+$")
+    schema_version: Literal["1.0"] = "1.0"
     adapter_name: str = Field(min_length=1)
     adapter_version: str = Field(min_length=1)
     parser_version: str = Field(min_length=1)
@@ -140,7 +158,12 @@ class CanonicalRecord(EvidenceFields):
 
     @model_validator(mode="after")
     def require_null_reasons(self) -> Self:
-        """Require an explicit reason for every absent supported field."""
+        """Require exact reasons for absent supported fields."""
+        unknown = sorted(set(self.null_reasons) - self.nullable_fields)
+        if unknown:
+            message = f"null reason references unknown field: {', '.join(unknown)}"
+            raise ValueError(message)
+
         missing = sorted(
             field_name
             for field_name in self.nullable_fields
@@ -148,6 +171,18 @@ class CanonicalRecord(EvidenceFields):
         )
         if missing:
             message = f"null reason required for: {', '.join(missing)}"
+            raise ValueError(message)
+
+        stale = sorted(
+            field_name for field_name in self.null_reasons if getattr(self, field_name) is not None
+        )
+        if stale:
+            message = f"null reason references non-null field: {', '.join(stale)}"
+            raise ValueError(message)
+
+        unknown_provenance = sorted(set(self.field_provenance) - set(type(self).model_fields))
+        if unknown_provenance:
+            message = f"provenance references unknown field: {', '.join(unknown_provenance)}"
             raise ValueError(message)
         return self
 
@@ -196,14 +231,7 @@ class PostRecord(CanonicalRecord):
         lambda value: _require_aware(value) if value is not None else value
     )
 
-    @field_validator("reactions")
-    @classmethod
-    def validate_reaction_counts(cls, value: dict[str, int]) -> dict[str, int]:
-        """Reject negative reaction counters."""
-        if any(count < 0 for count in value.values()):
-            message = "reaction counts must be non-negative"
-            raise ValueError(message)
-        return value
+    _validate_reaction_counts = field_validator("reactions")(_validate_reactions)
 
 
 class CommentRecord(CanonicalRecord):
@@ -239,14 +267,7 @@ class CommentRecord(CanonicalRecord):
             raise ValueError(message)
         return values
 
-    @field_validator("reactions")
-    @classmethod
-    def validate_reaction_counts(cls, value: dict[str, int]) -> dict[str, int]:
-        """Reject negative reaction counters."""
-        if any(count < 0 for count in value.values()):
-            message = "reaction counts must be non-negative"
-            raise ValueError(message)
-        return value
+    _validate_reaction_counts = field_validator("reactions")(_validate_reactions)
 
 
 class CounterObservation(BaseModel):
@@ -254,7 +275,7 @@ class CounterObservation(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    entity_type: str = Field(min_length=1)
+    entity_type: EntityType
     entity_id: str = Field(min_length=1)
     metric: str = Field(min_length=1)
     observed_at: datetime

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -102,11 +102,97 @@ def test_group_contract_normalizes_hash_and_requires_aware_times() -> None:
         )
 
 
+def test_contract_times_are_normalized_to_utc() -> None:
+    offset = timezone(timedelta(hours=5, minutes=30))
+    values = evidence().model_dump()
+    values["collected_at"] = datetime(2026, 7, 29, 17, 30, tzinfo=offset)
+
+    record = GroupRecord(
+        **values,
+        group_id="123",
+        canonical_url="https://example.test/groups/123",
+        name="Example Group",
+        privacy="private",
+        membership_state="member",
+        description=None,
+        member_count=None,
+        observed_at=datetime(2026, 7, 29, 17, 30, tzinfo=offset),
+        availability=CollectionHealth.OBSERVED,
+    )
+
+    assert record.collected_at == datetime(2026, 7, 29, 12, tzinfo=UTC)
+    assert record.observed_at == datetime(2026, 7, 29, 12, tzinfo=UTC)
+
+
 def test_nullable_fields_require_structured_null_reasons() -> None:
     values = evidence().model_dump()
     values["null_reasons"] = {}
 
     with pytest.raises(ValidationError, match="null reason"):
+        GroupRecord(
+            **values,
+            group_id="123",
+            canonical_url="https://example.test/groups/123",
+            name="Example Group",
+            privacy="private",
+            membership_state="member",
+            description=None,
+            member_count=None,
+            observed_at=datetime(2026, 7, 29, tzinfo=UTC),
+            availability=CollectionHealth.OBSERVED,
+        )
+
+
+@pytest.mark.parametrize(
+    "null_reasons,member_count,error",
+    [
+        (
+            {
+                "description": NullReason.NOT_PRESENT,
+                "member_count": NullReason.NOT_OBSERVED,
+            },
+            12,
+            "non-null field",
+        ),
+        (
+            {
+                "description": NullReason.NOT_PRESENT,
+                "member_count": NullReason.NOT_OBSERVED,
+                "unknown": NullReason.UNSUPPORTED,
+            },
+            None,
+            "unknown field",
+        ),
+    ],
+)
+def test_null_reasons_cannot_be_stale_or_unknown(
+    null_reasons: dict[str, NullReason],
+    member_count: int | None,
+    error: str,
+) -> None:
+    values = evidence().model_dump()
+    values["null_reasons"] = null_reasons
+
+    with pytest.raises(ValidationError, match=error):
+        GroupRecord(
+            **values,
+            group_id="123",
+            canonical_url="https://example.test/groups/123",
+            name="Example Group",
+            privacy="private",
+            membership_state="member",
+            description=None,
+            member_count=member_count,
+            observed_at=datetime(2026, 7, 29, tzinfo=UTC),
+            availability=CollectionHealth.OBSERVED,
+        )
+
+
+def test_version_one_contract_rejects_other_schema_versions() -> None:
+    values = evidence().model_dump()
+    values["schema_version"] = "2.0"
+
+    with pytest.raises(ValidationError, match="schema_version"):
         GroupRecord(
             **values,
             group_id="123",

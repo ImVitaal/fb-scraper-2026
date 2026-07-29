@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime
+from re import fullmatch
 
 from app.contracts.models import (
     CommentRecord,
@@ -30,6 +31,22 @@ class InvalidStateTransition(RepositoryError):
     """Raised when a durable job transition is not allowed."""
 
 
+class StaleObservation(RepositoryError):
+    """Raised when older data would replace the current canonical record."""
+
+
+class CanonicalIdentityConflict(RepositoryError):
+    """Raised when an existing canonical identifier changes parent identity."""
+
+
+class ObservationConflict(RepositoryError):
+    """Raised when one timestamp has conflicting canonical payloads."""
+
+
+class CounterObservationConflict(RepositoryError):
+    """Raised when one counter observation key has conflicting evidence."""
+
+
 ALLOWED_JOB_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
     JobState.PLANNED: frozenset({JobState.RUNNING, JobState.CANCELLED}),
     JobState.RUNNING: frozenset(
@@ -52,7 +69,10 @@ ALLOWED_JOB_TRANSITIONS: dict[JobState, frozenset[JobState]] = {
 
 
 def _timestamp(value: datetime) -> str:
-    return value.isoformat()
+    if value.tzinfo is None or value.utcoffset() is None:
+        message = "timestamp must be timezone-aware"
+        raise RepositoryError(message)
+    return value.astimezone(UTC).isoformat()
 
 
 class RawCaptureMetadataRepository:
@@ -70,15 +90,16 @@ class RawCaptureMetadataRepository:
         collected_at: datetime,
     ) -> None:
         """Insert capture metadata or verify the existing immutable record."""
+        normalized_sha256 = sha256.lower()
+        if not capture_id:
+            message = "capture_id must be non-empty"
+            raise CaptureMetadataConflict(message)
+        if fullmatch(r"[0-9a-f]{64}", normalized_sha256) is None:
+            message = "sha256 must contain 64 hexadecimal characters"
+            raise CaptureMetadataConflict(message)
+
+        expected = (normalized_sha256, source_url, _timestamp(collected_at))
         with self._connection:
-            self._connection.execute(
-                """
-                INSERT OR IGNORE INTO raw_captures(
-                    capture_id, sha256, source_url, collected_at
-                ) VALUES (?, ?, ?, ?)
-                """,
-                (capture_id, sha256, source_url, _timestamp(collected_at)),
-            )
             row = self._connection.execute(
                 """
                 SELECT sha256, source_url, collected_at
@@ -87,12 +108,24 @@ class RawCaptureMetadataRepository:
                 """,
                 (capture_id,),
             ).fetchone()
-
-        expected = (sha256, source_url, _timestamp(collected_at))
-        actual = (row["sha256"], row["source_url"], row["collected_at"])
-        if actual != expected:
-            message = f"capture metadata conflict: {capture_id}"
-            raise CaptureMetadataConflict(message)
+            if row is None:
+                try:
+                    self._connection.execute(
+                        """
+                        INSERT INTO raw_captures(
+                            capture_id, sha256, source_url, collected_at
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (capture_id, *expected),
+                    )
+                except sqlite3.IntegrityError as error:
+                    message = f"invalid capture metadata: {capture_id}"
+                    raise CaptureMetadataConflict(message) from error
+            else:
+                actual = (row["sha256"], row["source_url"], row["collected_at"])
+                if actual != expected:
+                    message = f"capture metadata conflict: {capture_id}"
+                    raise CaptureMetadataConflict(message)
 
 
 class CanonicalRepository:
@@ -105,6 +138,13 @@ class CanonicalRepository:
         """Upsert the current Group record and append its counter observation."""
         payload = record.model_dump_json()
         with self._connection:
+            self._guard_current_record(
+                table="groups",
+                id_column="group_id",
+                record_id=record.group_id,
+                observed_at=record.observed_at,
+                payload_json=payload,
+            )
             self._connection.execute(
                 """
                 INSERT INTO groups(
@@ -128,19 +168,13 @@ class CanonicalRepository:
                 ),
             )
             if record.member_count is not None:
-                self._connection.execute(
-                    """
-                    INSERT OR IGNORE INTO counter_observations(
-                        entity_type, entity_id, metric, observed_at, value,
-                        raw_capture_id
-                    ) VALUES ('group', ?, 'member_count', ?, ?, ?)
-                    """,
-                    (
-                        record.group_id,
-                        _timestamp(record.observed_at),
-                        record.member_count,
-                        record.raw_capture_id,
-                    ),
+                self._save_counter(
+                    "group",
+                    record.group_id,
+                    "member_count",
+                    record.observed_at,
+                    record.member_count,
+                    record.raw_capture_id,
                 )
 
     def get_group(self, group_id: str) -> GroupRecord | None:
@@ -155,7 +189,16 @@ class CanonicalRepository:
 
     def save_post(self, record: PostRecord) -> None:
         """Upsert one Post and append every changing counter observation."""
+        payload = record.model_dump_json()
         with self._connection:
+            self._guard_current_record(
+                table="posts",
+                id_column="post_id",
+                record_id=record.post_id,
+                observed_at=record.observed_at,
+                payload_json=payload,
+                identity={"group_id": record.group_id},
+            )
             self._connection.execute(
                 """
                 INSERT INTO posts(
@@ -177,7 +220,7 @@ class CanonicalRepository:
                     _timestamp(record.observed_at),
                     record.raw_capture_id,
                     record.schema_version,
-                    record.model_dump_json(),
+                    payload,
                 ),
             )
             self._save_counter(
@@ -218,7 +261,16 @@ class CanonicalRepository:
 
     def save_comment(self, record: CommentRecord) -> None:
         """Upsert one top-level Comment and append reaction observations."""
+        payload = record.model_dump_json()
         with self._connection:
+            self._guard_current_record(
+                table="comments",
+                id_column="comment_id",
+                record_id=record.comment_id,
+                observed_at=record.observed_at,
+                payload_json=payload,
+                identity={"post_id": record.post_id, "group_id": record.group_id},
+            )
             self._connection.execute(
                 """
                 INSERT INTO comments(
@@ -241,7 +293,7 @@ class CanonicalRepository:
                     _timestamp(record.observed_at),
                     record.raw_capture_id,
                     record.schema_version,
-                    record.model_dump_json(),
+                    payload,
                 ),
             )
             for reaction, value in sorted(record.reactions.items()):
@@ -291,21 +343,69 @@ class CanonicalRepository:
         value: int,
         raw_capture_id: str,
     ) -> None:
-        self._connection.execute(
+        observed_timestamp = _timestamp(observed_at)
+        row = self._connection.execute(
             """
-            INSERT OR IGNORE INTO counter_observations(
-                entity_type, entity_id, metric, observed_at, value, raw_capture_id
-            ) VALUES (?, ?, ?, ?, ?, ?)
+            SELECT value, raw_capture_id
+            FROM counter_observations
+            WHERE entity_type = ? AND entity_id = ? AND metric = ? AND observed_at = ?
             """,
             (
                 entity_type,
                 entity_id,
                 metric,
-                _timestamp(observed_at),
-                value,
-                raw_capture_id,
+                observed_timestamp,
             ),
+        ).fetchone()
+        if row is not None:
+            if (row["value"], row["raw_capture_id"]) != (value, raw_capture_id):
+                message = (
+                    f"counter observation conflict: "
+                    f"{entity_type}/{entity_id}/{metric}/{observed_timestamp}"
+                )
+                raise CounterObservationConflict(message)
+            return
+
+        self._connection.execute(
+            """
+            INSERT INTO counter_observations(
+                entity_type, entity_id, metric, observed_at, value, raw_capture_id
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (entity_type, entity_id, metric, observed_timestamp, value, raw_capture_id),
         )
+
+    def _guard_current_record(
+        self,
+        *,
+        table: str,
+        id_column: str,
+        record_id: str,
+        observed_at: datetime,
+        payload_json: str,
+        identity: dict[str, str] | None = None,
+    ) -> None:
+        identity = identity or {}
+        selected_columns = ["observed_at", "payload_json", *identity]
+        row = self._connection.execute(
+            f"SELECT {', '.join(selected_columns)} FROM {table} WHERE {id_column} = ?",
+            (record_id,),
+        ).fetchone()
+        if row is None:
+            return
+
+        for column, expected in identity.items():
+            if row[column] != expected:
+                message = f"canonical identity conflict: {table}/{record_id}/{column}"
+                raise CanonicalIdentityConflict(message)
+
+        current_time = datetime.fromisoformat(row["observed_at"])
+        if observed_at < current_time:
+            message = f"stale observation: {table}/{record_id}"
+            raise StaleObservation(message)
+        if observed_at == current_time and row["payload_json"] != payload_json:
+            message = f"observation conflict: {table}/{record_id}/{_timestamp(observed_at)}"
+            raise ObservationConflict(message)
 
 
 class JobRepository:
