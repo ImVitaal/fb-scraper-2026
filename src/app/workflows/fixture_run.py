@@ -4,13 +4,25 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import sqlite3
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 
 from app.capture import GzipRawCaptureStore, RawCaptureIntegrityError
 from app.contracts.models import CollectionHealth, CommentRecord, GroupRecord, JobState, PostRecord
+from app.metrics import (
+    MeasurementCounts,
+    MeasurementReceiptWriter,
+    ProcessResourceMeasurement,
+    ProcessResourceTimer,
+    ResourceSnapshot,
+    directory_storage_bytes,
+    process_memory_bytes,
+)
 from app.parsing import FixtureCaptureParser
 from app.storage.database import Database
 from app.storage.repositories import (
@@ -55,50 +67,74 @@ class FixtureWorkflow:
 
     def run(self, fixture_path: Path) -> WorkflowResult:
         """Store a synthetic fixture, parse it, and persist/export canonical records."""
-        raw_bytes = fixture_path.read_bytes()
-        run_id = sha256(raw_bytes).hexdigest()
-        stored = self.raw_store.write(run_id, raw_bytes)
-        group, posts, comments = self.parser.parse(
-            raw_bytes,
-            capture_id=stored.capture_id,
-            raw_sha256=stored.sha256,
-        )
-        self._persist(
-            stored.capture_id, stored.sha256, stored.path, stored.byte_count, group, posts, comments
-        )
-        return self._export(stored.capture_id, group, posts, comments)
+        timer = self._timer()
+        timer.start()
+        try:
+            raw_bytes = fixture_path.read_bytes()
+            run_id = sha256(raw_bytes).hexdigest()
+            stored = self.raw_store.write(run_id, raw_bytes)
+            group, posts, comments = self.parser.parse(
+                raw_bytes,
+                capture_id=stored.capture_id,
+                raw_sha256=stored.sha256,
+            )
+            self._persist(
+                stored.capture_id,
+                stored.sha256,
+                stored.path,
+                stored.byte_count,
+                group,
+                posts,
+                comments,
+            )
+            result = self._export(stored.capture_id, group, posts, comments)
+        except BaseException:
+            timer.stop()
+            raise
+        measurement = timer.stop()
+        self._write_measurement("run", result.run_id, group, posts, comments, measurement)
+        return result
 
     def replay(self, run_id: str, *, offline: bool = True) -> WorkflowResult:
         """Read and verify previously stored raw bytes without network access."""
         if not offline:
             raise ValueError("Milestone 1A replay requires --offline")
-        with Database(self.database_path) as database:
-            database.migrate()
-            metadata = RawCaptureMetadataRepository(database.connection).get(run_id)
-        storage_key = metadata["storage_path"]
-        if storage_key is None:
-            raise RawCaptureIntegrityError(f"raw capture storage path missing: {run_id}")
-        if storage_key != f"{run_id}.json.gz":
-            raise RawCaptureIntegrityError(f"raw capture storage key is invalid: {run_id}")
-        raw_path = self.raw_root / str(storage_key)
-        raw_bytes = self.raw_store.read(run_id, str(metadata["sha256"]))
-        if metadata["byte_count"] is not None and len(raw_bytes) != int(metadata["byte_count"]):
-            raise RawCaptureIntegrityError(f"raw capture byte count mismatch: {run_id}")
-        group, posts, comments = self.parser.parse(
-            raw_bytes,
-            capture_id=run_id,
-            raw_sha256=str(metadata["sha256"]),
-        )
-        self._persist(
-            run_id,
-            str(metadata["sha256"]),
-            raw_path,
-            len(raw_bytes),
-            group,
-            posts,
-            comments,
-        )
-        return self._export(run_id, group, posts, comments)
+        timer = self._timer()
+        timer.start()
+        try:
+            with Database(self.database_path) as database:
+                database.migrate()
+                metadata = RawCaptureMetadataRepository(database.connection).get(run_id)
+            storage_key = metadata["storage_path"]
+            if storage_key is None:
+                raise RawCaptureIntegrityError(f"raw capture storage path missing: {run_id}")
+            if storage_key != f"{run_id}.json.gz":
+                raise RawCaptureIntegrityError(f"raw capture storage key is invalid: {run_id}")
+            raw_path = self.raw_root / str(storage_key)
+            raw_bytes = self.raw_store.read(run_id, str(metadata["sha256"]))
+            if metadata["byte_count"] is not None and len(raw_bytes) != int(metadata["byte_count"]):
+                raise RawCaptureIntegrityError(f"raw capture byte count mismatch: {run_id}")
+            group, posts, comments = self.parser.parse(
+                raw_bytes,
+                capture_id=run_id,
+                raw_sha256=str(metadata["sha256"]),
+            )
+            self._persist(
+                run_id,
+                str(metadata["sha256"]),
+                raw_path,
+                len(raw_bytes),
+                group,
+                posts,
+                comments,
+            )
+            result = self._export(run_id, group, posts, comments)
+        except BaseException:
+            timer.stop()
+            raise
+        measurement = timer.stop()
+        self._write_measurement("replay", run_id, group, posts, comments, measurement)
+        return result
 
     def _persist(
         self,
@@ -271,11 +307,14 @@ class FixtureWorkflow:
             self._markdown_report(run_id, normalized_sha256, identifiers), encoding="utf-8"
         )
         manifest_path = exports / f"{run_id}.manifest.json"
+        sqlite_path = exports / f"{run_id}.sqlite3"
+        self._write_sqlite_export(sqlite_path, records)
         manifest = {
             "files": {
                 "csv": self._file_sha256(csv_path),
                 "json": self._file_sha256(json_path),
                 "markdown": self._file_sha256(markdown_path),
+                "sqlite": self._file_sha256(sqlite_path),
             },
             "identifiers": list(identifiers),
             "normalized_sha256": normalized_sha256,
@@ -289,6 +328,106 @@ class FixtureWorkflow:
         manifest_path.write_bytes(manifest_bytes)
         self._record_manifest(run_id, manifest_path, sha256(manifest_bytes).hexdigest())
         return WorkflowResult(run_id, identifiers, normalized_sha256, self.output)
+
+    def _timer(self) -> ProcessResourceTimer:
+        """Measure both normalized outputs and external raw storage."""
+
+        def snapshot() -> ResourceSnapshot:
+            return ResourceSnapshot(
+                memory_bytes=process_memory_bytes(),
+                storage_bytes=directory_storage_bytes(self.output)
+                + directory_storage_bytes(self.raw_root),
+            )
+
+        return ProcessResourceTimer(resource_snapshot=snapshot)
+
+    def _write_measurement(
+        self,
+        operation: str,
+        run_id: str,
+        group: GroupRecord,
+        posts: list[PostRecord],
+        comments: list[CommentRecord],
+        measurement: ProcessResourceMeasurement,
+    ) -> None:
+        """Write a complete operation receipt beside the exports."""
+        retries, failures = self._execution_counts(run_id)
+        MeasurementReceiptWriter(self.output / "exports").write(
+            operation=operation,
+            run_id=run_id,
+            counts=MeasurementCounts(
+                groups=1,
+                posts=len(posts),
+                comments=len(comments),
+                retries=retries,
+                failures=failures,
+            ),
+            measurement=measurement,
+            completeness=1.0,
+        )
+
+    def _execution_counts(self, run_id: str) -> tuple[int, int]:
+        with Database(self.database_path) as database:
+            attempts = database.connection.execute(
+                "SELECT COUNT(*) AS count FROM attempts WHERE task_id = ?", (run_id,)
+            ).fetchone()
+            failures = database.connection.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM failures
+                WHERE attempt_id IN (SELECT attempt_id FROM attempts WHERE task_id = ?)
+                """,
+                (run_id,),
+            ).fetchone()
+        attempt_count = int(attempts["count"])
+        return max(0, attempt_count - 1), int(failures["count"])
+
+    @staticmethod
+    def _write_sqlite_export(path: Path, records: list[dict[str, Any]]) -> None:
+        """Create one deterministic, standalone SQLite record export."""
+        temporary_path: Path | None = None
+        try:
+            with NamedTemporaryFile(dir=path.parent, suffix=".sqlite3", delete=False) as temporary:
+                temporary_path = Path(temporary.name)
+            connection = sqlite3.connect(temporary_path)
+            try:
+                connection.execute(
+                    """
+                    CREATE TABLE records(
+                        entity_type TEXT NOT NULL,
+                        canonical_id TEXT NOT NULL,
+                        identifier TEXT PRIMARY KEY,
+                        payload_json TEXT NOT NULL
+                    )
+                    """
+                )
+                connection.executemany(
+                    """
+                    INSERT INTO records(entity_type, canonical_id, identifier, payload_json)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            row["entity_type"],
+                            row["canonical_id"],
+                            row["identifier"],
+                            json.dumps(
+                                row["payload"],
+                                sort_keys=True,
+                                separators=(",", ":"),
+                                ensure_ascii=False,
+                            ),
+                        )
+                        for row in records
+                    ],
+                )
+                connection.commit()
+            finally:
+                connection.close()
+            os.replace(temporary_path, path)
+        finally:
+            if temporary_path is not None and temporary_path.exists():
+                temporary_path.unlink()
 
     def _record_manifest(self, run_id: str, manifest_path: Path, manifest_sha256: str) -> None:
         """Persist the operator-visible manifest receipt beside its SQLite output."""

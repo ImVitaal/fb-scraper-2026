@@ -6,10 +6,12 @@ from app.discovery.parser import (
     DiscoveryResult,
     UnsupportedDiscoveryLayoutError,
 )
+from app.discovery.session_fixture import SessionDiscoveryFixtureAdapter
 
 __all__ = [
     "DiscoveryCandidate",
     "DiscoveryParser",
     "DiscoveryResult",
+    "SessionDiscoveryFixtureAdapter",
     "UnsupportedDiscoveryLayoutError",
 ]

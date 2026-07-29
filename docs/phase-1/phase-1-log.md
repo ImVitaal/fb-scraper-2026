@@ -3,9 +3,10 @@
 ## Current state
 
 - Active plan: `LEAN_THREE_PHASE_COMPLETION_PLAN.md`
-- Active milestone: 1C, live capture and resume
-- Working tree baseline: `e400d45`
-- Phase 2 remains blocked by the Phase 1 exit gate.
+- Phase 1 fixture-backed test-release gate: passed.
+- Active milestone: Phase 2A, ten-Group sequential reliability.
+- Integration baseline before Phase 1 completion: `8b18b18`.
+- Controlled operator browser-session validation remains a test-release limit.
 
 ## Completed foundation
 
@@ -109,3 +110,20 @@ uv run pytest
 - Coverage: 81.56%.
 - Ruff and `ty`: passed.
 - Latest implementation commit: `9a0cf70`.
+
+## Phase 1 fixture-backed completion
+
+- Added multi-page rendered capture and durable cursor-first checkpoints.
+- Added interruption/resume from the latest checkpoint.
+- Added explicit parser-drift, cursor-loop, and page-bound terminal failures.
+- Added offline replay of every integrity-checked stored HTML page.
+- Added matching CSV, JSON, standalone SQLite, manifest, and Markdown outputs.
+- Added run, resume, and replay resource and throughput receipts.
+- Added deterministic Phase 1 quality receipts.
+- Added guided and strict TOML operator workflows.
+- Connected imported, guided, and existing session preparation.
+- Connected session-gated keyword-and-location discovery, URL fallback, and CSV fallback.
+- Enforced exactly one selected Group.
+- Verified 91 tests with 83.19% coverage.
+- Verified Ruff formatting, Ruff linting, `ty`, fixture run, fixture replay, and secret scan.
+- Recorded completion evidence in `docs/phase-1/phase-1-completion-report.md`.

@@ -2,6 +2,7 @@
 
 import json
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
@@ -11,8 +12,14 @@ import typer
 
 from app import __version__
 from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
-from app.configuration import FixtureRunConfiguration
+from app.configuration import (
+    FixtureRunConfiguration,
+    OperatorRunConfiguration,
+    OperatorSessionConfiguration,
+    OperatorTargetConfiguration,
+)
 from app.contracts.models import JobState
+from app.discovery import SessionDiscoveryFixtureAdapter
 from app.retention import RetentionService
 from app.session import SessionProfileService, collect_guided_storage_state
 from app.storage.database import Database
@@ -67,24 +74,202 @@ def run(
         Path | None, typer.Option("--fixture", dir_okay=False, readable=True)
     ] = None,
     config: Annotated[Path | None, typer.Option("--config", dir_okay=False, readable=True)] = None,
+    guided: Annotated[bool, typer.Option("--guided")] = False,
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
 ) -> None:
-    """Store, parse, persist, and export one synthetic raw fixture."""
+    """Run a fixture or one connected operator workflow."""
     try:
-        if config is not None:
-            if fixture is not None:
-                raise ValueError("use either --fixture or --config")
+        selected_modes = sum((fixture is not None, config is not None, guided))
+        if selected_modes != 1:
+            raise ValueError("use exactly one of --fixture, --config, or --guided")
+        if guided:
+            configured_operator = _guided_operator_configuration(
+                output=output,
+                raw_root=raw_root,
+                session_root=session_root,
+            )
+            result = _run_operator(configured_operator)
+        elif config is not None and OperatorRunConfiguration.is_operator(config):
+            result = _run_operator(OperatorRunConfiguration.load(config))
+        elif config is not None:
             configured = FixtureRunConfiguration.load(config)
             result = FixtureWorkflow(configured.output, configured.raw_root).run(configured.fixture)
         else:
-            if fixture is None:
-                raise ValueError("--fixture or --config is required")
+            assert fixture is not None
             result = FixtureWorkflow(output, raw_root).run(fixture)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
-    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+    payload = result if isinstance(result, dict) else result.as_dict()
+    typer.echo(json.dumps(payload, sort_keys=True))
+
+
+def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
+    """Prepare one session and target, then run the existing capture workflow."""
+    with Database(configuration.output / "scanner.sqlite3") as database:
+        database.migrate()
+        sessions = SessionProfileService(database.connection, configuration.session_root)
+        _prepare_session(sessions, configuration.session)
+        state = sessions.read_state(configuration.session.profile)
+        targets = TargetPreparationService(database.connection)
+        selected = _prepare_target(targets, state, configuration.target)
+    return _capture_selected(
+        configuration.session.profile,
+        selected.campaign_id,
+        output=configuration.output,
+        raw_root=configuration.raw_root,
+        session_root=configuration.session_root,
+    )
+
+
+def _prepare_session(
+    sessions: SessionProfileService,
+    configuration: OperatorSessionConfiguration,
+) -> None:
+    """Prepare or validate the configured encrypted session profile."""
+    if configuration.method == "existing":
+        sessions.read_state(configuration.profile)
+        return
+    if configuration.method == "guided":
+        state = collect_guided_storage_state(configuration.start_url)
+        sessions.save_guided_state(configuration.profile, state)
+        return
+    assert configuration.state_file is not None
+    try:
+        state = json.loads(configuration.state_file.read_text(encoding="utf-8"))
+    except OSError as error:
+        raise ValueError("imported session state could not be read") from error
+    except json.JSONDecodeError as error:
+        raise ValueError("imported session state is invalid JSON") from error
+    sessions.import_state(configuration.profile, state)
+
+
+def _prepare_target(
+    targets: TargetPreparationService,
+    state: Mapping[str, object],
+    configuration: OperatorTargetConfiguration,
+):
+    """Prepare and select exactly one configured Group."""
+    if configuration.method == "url":
+        assert configuration.url is not None
+        return targets.add_url(configuration.url)
+    if configuration.method == "csv":
+        assert configuration.csv_file is not None
+        campaign = targets.add_csv(configuration.csv_file)
+    else:
+        assert configuration.fixture is not None
+        assert configuration.keyword is not None
+        assert configuration.location is not None
+        raw_html = SessionDiscoveryFixtureAdapter(state).capture(configuration.fixture)
+        campaign = targets.add_discovery(
+            raw_html,
+            keyword=configuration.keyword,
+            location=configuration.location,
+        )
+    assert configuration.select is not None
+    candidate_id = _resolve_candidate(campaign.candidates, configuration.select)
+    return targets.select(campaign.campaign_id, candidate_id)
+
+
+def _resolve_candidate(candidates, selector: str) -> str:
+    matches = [
+        candidate
+        for candidate in candidates
+        if selector in {candidate.candidate_id, candidate.group_id, str(candidate.rank)}
+    ]
+    if len(matches) != 1:
+        raise ValueError("target selection must match exactly one candidate id, Group id, or rank")
+    return matches[0].candidate_id
+
+
+def _guided_operator_configuration(
+    *,
+    output: Path,
+    raw_root: Path,
+    session_root: Path,
+) -> OperatorRunConfiguration:
+    """Prompt for one operator workflow without echoing session material."""
+    session_method = typer.prompt(
+        "Session method (existing, imported, guided)", default="existing"
+    ).strip()
+    if session_method not in {"existing", "imported", "guided"}:
+        raise ValueError("session method must be existing, imported, or guided")
+    profile = typer.prompt("Session profile").strip()
+    state_file = (
+        Path(typer.prompt("Imported state file", hide_input=True)).expanduser().resolve()
+        if session_method == "imported"
+        else None
+    )
+    start_url = (
+        typer.prompt("Guided login start URL", default="https://www.facebook.com/").strip()
+        if session_method == "guided"
+        else "https://www.facebook.com/"
+    )
+    target_method = typer.prompt("Target method (discovery, url, csv)", default="discovery").strip()
+    if target_method not in {"discovery", "url", "csv"}:
+        raise ValueError("target method must be discovery, url, or csv")
+    if target_method == "url":
+        target = OperatorTargetConfiguration(method="url", url=typer.prompt("Group URL").strip())
+    elif target_method == "csv":
+        target = OperatorTargetConfiguration(
+            method="csv",
+            csv_file=Path(typer.prompt("CSV file")).expanduser().resolve(),
+            select=typer.prompt("Select candidate by Group id or rank").strip(),
+        )
+    else:
+        target = OperatorTargetConfiguration(
+            method="discovery",
+            fixture=Path(typer.prompt("Synthetic discovery capture")).expanduser().resolve(),
+            keyword=typer.prompt("Keyword").strip(),
+            location=typer.prompt("Location").strip(),
+            select=typer.prompt("Select candidate by Group id or rank").strip(),
+        )
+    return OperatorRunConfiguration(
+        output=output,
+        raw_root=raw_root,
+        session_root=session_root,
+        session=OperatorSessionConfiguration(
+            method=session_method,
+            profile=profile,
+            state_file=state_file,
+            start_url=start_url,
+        ),
+        target=target,
+    )
+
+
+def _capture_selected(
+    profile: str,
+    campaign: str,
+    *,
+    output: Path,
+    raw_root: Path,
+    session_root: Path,
+) -> dict[str, object]:
+    """Capture the selected Group through its encrypted browser session."""
+    job_id = str(uuid4())
+    with Database(output / "scanner.sqlite3") as database:
+        database.migrate()
+        sessions = SessionProfileService(database.connection, session_root)
+        state = sessions.read_state(profile)
+        selected = TargetPreparationService(database.connection).get_selected(campaign)
+        JobRepository(database.connection).create(job_id)
+        LiveRunRepository(database.connection).create(
+            job_id,
+            profile,
+            selected,
+            datetime.now(UTC) - timedelta(days=30),
+            "playwright_group/1.0",
+        )
+    html = PlaywrightGroupCaptureAdapter(state).capture_group(selected.canonical_url)
+    result = LiveCaptureWorkflow(output, raw_root).capture_html(job_id, html)
+    return {
+        "identifiers": list(result.identifiers),
+        "job_id": result.job_id,
+        "state": result.state.value,
+    }
 
 
 @app.command("capture")
@@ -97,35 +282,17 @@ def capture(
 ) -> None:
     """Capture the selected Group through its encrypted browser session."""
     try:
-        job_id = str(uuid4())
-        with Database(output / "scanner.sqlite3") as database:
-            database.migrate()
-            sessions = SessionProfileService(database.connection, session_root)
-            state = sessions.read_state(profile)
-            selected = TargetPreparationService(database.connection).get_selected(campaign)
-            JobRepository(database.connection).create(job_id)
-            LiveRunRepository(database.connection).create(
-                job_id,
-                profile,
-                selected,
-                datetime.now(UTC) - timedelta(days=30),
-                "playwright_group/1.0",
-            )
-        html = PlaywrightGroupCaptureAdapter(state).capture_group(selected.canonical_url)
-        result = LiveCaptureWorkflow(output, raw_root).capture_html(job_id, html)
+        result = _capture_selected(
+            profile,
+            campaign,
+            output=output,
+            raw_root=raw_root,
+            session_root=session_root,
+        )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
-    typer.echo(
-        json.dumps(
-            {
-                "identifiers": list(result.identifiers),
-                "job_id": result.job_id,
-                "state": result.state.value,
-            },
-            sort_keys=True,
-        )
-    )
+    typer.echo(json.dumps(result, sort_keys=True))
 
 
 @app.command()

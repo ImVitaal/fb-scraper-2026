@@ -1,6 +1,6 @@
 # Private Group Scanner — internal build brief
 
-**Status:** Planning baseline
+**Status:** Fixture-backed Phase 1 test release
 **Primary audience:** Technical operators and implementation agents
 **Current milestone:** Phase 1 — one-Group correctness demo
 
@@ -182,10 +182,31 @@ Agents must:
 6. Mark work complete only after its acceptance gate passes.
 7. Leave integration and shared-contract changes to the designated owner.
 
-## Current repository state
+## Test-release quick start
 
-The repository contains research and planning documents. No product package,
-fixture corpus, migration, or working demo exists yet.
+Install and verify the native Windows development environment:
 
-The previous Page-first Phase 1 direction is superseded by the current
-private-Group-first plan.
+```powershell
+uv sync
+uv run playwright install chromium
+uv run pgscan --help
+uv run pytest
+```
+
+Run the synthetic one-Group workflow with private raw storage outside the repository:
+
+```powershell
+$output = Join-Path $env:TEMP "pgscan-output"
+$raw = Join-Path $env:TEMP "pgscan-private-raw"
+$result = uv run pgscan run `
+  --fixture tests/fixtures/one_group_capture.json `
+  --output $output `
+  --raw-root $raw | ConvertFrom-Json
+uv run pgscan replay $result.run_id --offline --output $output --raw-root $raw
+```
+
+Run `uv run pgscan run --guided` for the connected operator workflow.
+Use a strict TOML file for repeatable session, discovery, selection, and capture.
+
+The repository contains the package, migrations, synthetic fixtures, tests, and working
+Phase 1 commands. See `docs/phase-1/phase-1-completion-report.md` for verified limits.
