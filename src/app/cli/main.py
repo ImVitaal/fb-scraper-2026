@@ -1,10 +1,14 @@
-"""Phase 1 command-line skeleton."""
+"""Command-line entry points for the local private-Group workflow."""
 
+import json
+import os
+from pathlib import Path
 from typing import Annotated
 
 import typer
 
 from app import __version__
+from app.workflows import FixtureWorkflow
 
 app = typer.Typer(
     name="pgscan",
@@ -31,9 +35,30 @@ def cli(
     """Run the local private-Group collection workflow."""
 
 
+def _default_output() -> Path:
+    """Return the per-user raw-data root, outside a source checkout."""
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+    return base / "private-group-scanner"
+
+
+DEFAULT_OUTPUT = _default_output()
+DEFAULT_RAW_ROOT = DEFAULT_OUTPUT / "raw"
+
+
 @app.command()
-def run() -> None:
-    """Start the guided discovery-to-export workflow."""
+def run(
+    fixture: Annotated[Path, typer.Option("--fixture", exists=True, dir_okay=False, readable=True)],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+) -> None:
+    """Store, parse, persist, and export one synthetic raw fixture."""
+    try:
+        result = FixtureWorkflow(output, raw_root).run(fixture)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
 
 
 @app.command()
@@ -47,8 +72,19 @@ def resume(run_id: str) -> None:
 
 
 @app.command()
-def replay(run_id: str, offline: bool = True) -> None:
-    """Replay stored raw captures."""
+def replay(
+    run_id: str,
+    offline: Annotated[bool, typer.Option("--offline")] = True,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+) -> None:
+    """Replay one stored raw capture without network access."""
+    try:
+        result = FixtureWorkflow(output, raw_root).replay(run_id, offline=offline)
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
 
 
 @app.command()

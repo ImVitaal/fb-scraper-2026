@@ -88,6 +88,8 @@ class RawCaptureMetadataRepository:
         sha256: str,
         source_url: str,
         collected_at: datetime,
+        storage_path: str | None = None,
+        byte_count: int | None = None,
     ) -> None:
         """Insert capture metadata or verify the existing immutable record."""
         normalized_sha256 = sha256.lower()
@@ -98,11 +100,14 @@ class RawCaptureMetadataRepository:
             message = "sha256 must contain 64 hexadecimal characters"
             raise CaptureMetadataConflict(message)
 
+        if byte_count is not None and byte_count < 0:
+            message = "byte_count must be non-negative"
+            raise CaptureMetadataConflict(message)
         expected = (normalized_sha256, source_url, _timestamp(collected_at))
         with self._connection:
             row = self._connection.execute(
                 """
-                SELECT sha256, source_url, collected_at
+                SELECT sha256, source_url, collected_at, storage_path, byte_count
                 FROM raw_captures
                 WHERE capture_id = ?
                 """,
@@ -113,10 +118,10 @@ class RawCaptureMetadataRepository:
                     self._connection.execute(
                         """
                         INSERT INTO raw_captures(
-                            capture_id, sha256, source_url, collected_at
-                        ) VALUES (?, ?, ?, ?)
+                            capture_id, sha256, source_url, collected_at, storage_path, byte_count
+                        ) VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        (capture_id, *expected),
+                        (capture_id, *expected, storage_path, byte_count),
                     )
                 except sqlite3.IntegrityError as error:
                     message = f"invalid capture metadata: {capture_id}"
@@ -126,6 +131,26 @@ class RawCaptureMetadataRepository:
                 if actual != expected:
                     message = f"capture metadata conflict: {capture_id}"
                     raise CaptureMetadataConflict(message)
+                location = (row["storage_path"], row["byte_count"])
+                requested_location = (storage_path, byte_count)
+                if requested_location != (None, None) and location != requested_location:
+                    message = f"capture storage conflict: {capture_id}"
+                    raise CaptureMetadataConflict(message)
+
+    def get(self, capture_id: str) -> sqlite3.Row:
+        """Return immutable capture metadata required for offline replay."""
+        row = self._connection.execute(
+            """
+            SELECT capture_id, sha256, source_url, collected_at, storage_path, byte_count
+            FROM raw_captures
+            WHERE capture_id = ?
+            """,
+            (capture_id,),
+        ).fetchone()
+        if row is None:
+            message = f"raw capture not found: {capture_id}"
+            raise RecordNotFound(message)
+        return row
 
 
 class CanonicalRepository:

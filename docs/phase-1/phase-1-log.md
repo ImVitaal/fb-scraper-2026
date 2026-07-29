@@ -3,8 +3,8 @@
 ## Current state
 
 - Active plan: `LEAN_THREE_PHASE_COMPLETION_PLAN.md`
-- Active milestone: 1A, offline vertical slice
-- Working tree baseline: `7758507`
+- Active milestone: 1B, session and target preparation
+- Working tree baseline: `e400d45`
 - Phase 2 remains blocked by the Phase 1 exit gate.
 
 ## Completed foundation
@@ -28,14 +28,41 @@
 - Built-wheel migration and integrity probes: passed.
 - Current migrations: 001 and 002.
 
+## Milestone 1A delivery
+
+- Added one synthetic fixture with one Group, one Post, and one top-level Comment.
+- `pgscan run --fixture ... --output ... --raw-root ...` stores deterministic gzip bytes,
+  records and verifies SHA-256, persists canonical records, and exports JSON and CSV.
+- `pgscan replay RUN_ID --offline --output ... --raw-root ...` verifies stored raw bytes,
+  reparses them without network access, and returns the same canonical identifiers and
+  normalized hash.
+- Raw bytes use a separate operator raw root. The workflow rejects a raw root inside the
+  repository and stores only a relative capture key in SQLite metadata.
+- Fixture layout and version mismatches fail before SQLite persistence. Tampered gzip bytes
+  fail replay integrity checks.
+
+### Milestone 1A verification
+
+```powershell
+uv run ruff format --check .
+uv run ruff check .
+uv run ty check
+uv run pytest
+uv run pgscan run --fixture tests/fixtures/one_group_capture.json --output OUTPUT --raw-root RAW_ROOT
+uv run pgscan replay RUN_ID --offline --output OUTPUT --raw-root RAW_ROOT
+```
+
+- Tests: 29 passed; coverage: 87.23%.
+- Run and replay identifiers: `comment:comment-fixture-3001`,
+  `group:group-fixture-1001`, and `post:post-fixture-2001`.
+- Run and replay normalized hash:
+  `724a34fa311918e89c43366861d5360b9ab902ebf8cd6973ed5f9a306f41a1a2`.
+
 ## Next acceptance result
 
-Milestone 1A must deliver one fixture-backed command that:
+Milestone 1B must deliver both session methods and one selected Group:
 
-1. Stores gzip raw capture bytes outside Git.
-2. Verifies SHA-256.
-3. Parses one Group, Post, and top-level Comment.
-4. Persists records into SQLite.
-5. Replays offline.
-6. Exports JSON and CSV.
-7. Produces identical identifiers from run and replay.
+1. Imported browser-session preparation and guided visible login produce the same
+   non-secret encrypted-session metadata contract.
+2. Passwords do not enter storage or logs.
+3. Keyword-and-location discovery or direct URL/CSV fallback selects one Group.

@@ -1,0 +1,145 @@
+"""End-to-end acceptance tests for the Milestone 1A offline workflow."""
+
+from __future__ import annotations
+
+import csv
+import gzip
+import hashlib
+import json
+import sqlite3
+from pathlib import Path
+
+from typer.testing import CliRunner
+
+from app.cli.main import app
+
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "one_group_capture.json"
+EXPECTED_IDENTIFIERS = {
+    "comment:comment-fixture-3001",
+    "group:group-fixture-1001",
+    "post:post-fixture-2001",
+}
+
+
+def _result_payload(stdout: str) -> dict[str, object]:
+    return json.loads(stdout)
+
+
+def _csv_identifiers(path: Path) -> set[str]:
+    with path.open(newline="", encoding="utf-8") as source:
+        return {f"{row['entity_type']}:{row['canonical_id']}" for row in csv.DictReader(source)}
+
+
+def test_fixture_run_and_offline_replay_produce_identical_identifiers(tmp_path: Path) -> None:
+    output = tmp_path / "operator-data"
+    raw_root = tmp_path / "private-raw"
+    runner = CliRunner()
+
+    run_result = runner.invoke(
+        app,
+        ["run", "--fixture", str(FIXTURE), "--output", str(output), "--raw-root", str(raw_root)],
+    )
+
+    assert run_result.exit_code == 0, run_result.output
+    run_payload = _result_payload(run_result.stdout)
+    run_identifiers = run_payload["identifiers"]
+    assert isinstance(run_identifiers, list)
+    assert set(run_identifiers) == EXPECTED_IDENTIFIERS
+    run_id = str(run_payload["run_id"])
+
+    raw_path = raw_root / f"{run_id}.json.gz"
+    raw_bytes = FIXTURE.read_bytes()
+    assert raw_path.is_file()
+    with gzip.open(raw_path, "rb") as capture:
+        assert capture.read() == raw_bytes
+
+    database_path = output / "scanner.sqlite3"
+    with sqlite3.connect(database_path) as connection:
+        capture_row = connection.execute(
+            "SELECT sha256, storage_path, byte_count FROM raw_captures WHERE capture_id = ?",
+            (run_id,),
+        ).fetchone()
+        counts = {
+            table: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            for table in ("groups", "posts", "comments")
+        }
+    assert capture_row == (hashlib.sha256(raw_bytes).hexdigest(), raw_path.name, len(raw_bytes))
+    assert counts == {"groups": 1, "posts": 1, "comments": 1}
+
+    assert _csv_identifiers(output / "exports" / f"{run_id}.csv") == EXPECTED_IDENTIFIERS
+    export_payload = json.loads((output / "exports" / f"{run_id}.json").read_text(encoding="utf-8"))
+    assert set(export_payload["identifiers"]) == EXPECTED_IDENTIFIERS
+
+    replay_result = runner.invoke(
+        app,
+        ["replay", run_id, "--offline", "--output", str(output), "--raw-root", str(raw_root)],
+    )
+
+    assert replay_result.exit_code == 0, replay_result.output
+    replay_payload = _result_payload(replay_result.stdout)
+    replay_identifiers = replay_payload["identifiers"]
+    assert isinstance(replay_identifiers, list)
+    assert set(replay_identifiers) == EXPECTED_IDENTIFIERS
+    assert replay_identifiers == run_identifiers
+
+
+def test_offline_replay_rejects_tampered_raw_capture(tmp_path: Path) -> None:
+    output = tmp_path / "operator-data"
+    raw_root = tmp_path / "private-raw"
+    runner = CliRunner()
+    run_result = runner.invoke(
+        app,
+        ["run", "--fixture", str(FIXTURE), "--output", str(output), "--raw-root", str(raw_root)],
+    )
+    run_id = str(_result_payload(run_result.stdout)["run_id"])
+    raw_path = raw_root / f"{run_id}.json.gz"
+    raw_path.write_bytes(b"tampered")
+
+    replay_result = runner.invoke(
+        app,
+        ["replay", run_id, "--offline", "--output", str(output), "--raw-root", str(raw_root)],
+    )
+
+    assert replay_result.exit_code != 0
+    assert (
+        "sha256" in replay_result.stdout.lower() or "sha256" in str(replay_result.exception).lower()
+    )
+
+
+def test_run_rejects_unsupported_fixture_before_database_persistence(tmp_path: Path) -> None:
+    fixture = tmp_path / "unsupported.json"
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["fixture_version"] = "2.0"
+    fixture.write_text(json.dumps(payload), encoding="utf-8")
+    output = tmp_path / "operator-data"
+    raw_root = tmp_path / "private-raw"
+
+    result = CliRunner().invoke(
+        app,
+        ["run", "--fixture", str(fixture), "--output", str(output), "--raw-root", str(raw_root)],
+    )
+
+    assert result.exit_code != 0
+    assert "unsupported" in result.stdout
+    assert not (output / "scanner.sqlite3").exists()
+
+
+def test_run_rejects_a_raw_root_inside_the_repository(tmp_path: Path) -> None:
+    output = tmp_path / "operator-data"
+    repository_raw_root = Path(__file__).parents[2] / "private-raw-test"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "run",
+            "--fixture",
+            str(FIXTURE),
+            "--output",
+            str(output),
+            "--raw-root",
+            str(repository_raw_root),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "outside the repository" in result.stdout
