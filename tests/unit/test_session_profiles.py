@@ -65,3 +65,15 @@ def test_profile_rejects_path_traversal_and_valid_dpapi_envelope_swaps(tmp_path:
         (root / "profile-one.dpapi").write_bytes((root / "profile-two.dpapi").read_bytes())
 
         assert service.inspect("profile-one").health == "session_invalid"
+
+
+def test_scanner_owned_browser_profile_is_outside_the_repository(tmp_path: Path) -> None:
+    with Database(tmp_path / "scanner.sqlite3") as database:
+        database.migrate()
+        root = tmp_path / "private-sessions"
+        service = SessionProfileService(database.connection, root)
+
+        directory = service.browser_profile_directory("profile-guided")
+
+    assert directory == root / "browser-profiles" / "profile-guided"
+    assert directory.is_dir()

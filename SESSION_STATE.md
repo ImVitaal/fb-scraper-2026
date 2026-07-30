@@ -100,6 +100,8 @@
 - `pgscan doctor` passed all nine checks.
 - Ruff format and lint passed. `ty` passed. Full suite: 178 passed with 81.94% coverage.
 - Tracked-file secret scan: zero findings.
+- Guided login now creates a scanner-owned persistent Chrome profile under the external
+  session root. Later capture and resume reuse that profile without manual collection.
 
 ## Verification
 
@@ -118,8 +120,8 @@ uv run pytest
 ## Current operator gaps
 
 - A ready encrypted APP session is not present in the default session root. The one-time
-  `pgscan session login --profile operator` command must finish and print its redacted
-  metadata before automated discovery or capture starts.
+  `pgscan session login --profile operator --channel chrome` command must finish and print
+  its redacted metadata before automated discovery or capture starts.
 - Chrome `Default` was closed and readable during the 2026-07-30 controlled attempt.
 - Browser-profile import returned
   `browser profile did not contain an authenticated session`.

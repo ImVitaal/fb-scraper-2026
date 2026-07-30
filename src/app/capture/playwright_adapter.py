@@ -11,6 +11,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
+from pathlib import Path
 from typing import Any, cast
 
 from bs4 import BeautifulSoup
@@ -594,11 +595,15 @@ class PlaywrightGroupCaptureAdapter:
         limits: BrowserCaptureLimits | None = None,
         headless: bool = True,
         known_post_ids: set[str] | None = None,
+        user_data_directory: Path | None = None,
+        channel: str | None = None,
     ) -> None:
         self.storage_state = dict(storage_state)
         self.limits = limits or BrowserCaptureLimits()
         self.headless = headless
         self.known_post_ids = frozenset(known_post_ids or ())
+        self.user_data_directory = user_data_directory
+        self.channel = channel
         self.closed = True
         self._retry_count = 0
         self._retry_waits: list[float] = []
@@ -627,8 +632,20 @@ class PlaywrightGroupCaptureAdapter:
         self.closed = False
         try:
             self._playwright = sync_playwright().start()
-            self._browser = self._playwright.chromium.launch(headless=self.headless)
-            self._context = self._browser.new_context(storage_state=cast(Any, self.storage_state))
+            if self.user_data_directory is not None:
+                self._context = self._playwright.chromium.launch_persistent_context(
+                    str(self.user_data_directory),
+                    channel=self.channel,
+                    headless=self.headless,
+                )
+            else:
+                self._browser = self._playwright.chromium.launch(
+                    headless=self.headless,
+                    channel=self.channel,
+                )
+                self._context = self._browser.new_context(
+                    storage_state=cast(Any, self.storage_state)
+                )
             yield _BrowserRenderedPageCapture(self, target_url, lower_bound)
         finally:
             self._close()

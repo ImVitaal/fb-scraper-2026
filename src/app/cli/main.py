@@ -537,6 +537,12 @@ def _capture_selected_locked(
         database.migrate()
         sessions = SessionProfileService(database.connection, session_root)
         state = sessions.read_state(profile)
+        session_metadata = sessions.inspect(profile)
+        browser_profile = (
+            sessions.browser_profile_directory(profile)
+            if session_metadata.source_browser.endswith("_persistent")
+            else None
+        )
         selected = TargetPreparationService(database.connection).get_selected(campaign)
         known_post_ids = {
             str(row["post_id"])
@@ -565,6 +571,8 @@ def _capture_selected_locked(
         headless=headless,
         limits=limits,
         known_post_ids=known_post_ids,
+        user_data_directory=browser_profile,
+        channel="chrome" if browser_profile is not None else None,
     )
     try:
         with adapter.capture_pages(
@@ -729,14 +737,21 @@ def resume(
             state = JobRepository(database.connection).get_state(run_id)
             if state not in {JobState.INTERRUPTED, JobState.PARTIAL}:
                 raise ValueError("only interrupted or partial runs can resume")
-            storage_state = SessionProfileService(database.connection, session_root).read_state(
-                live.profile_id
+            sessions = SessionProfileService(database.connection, session_root)
+            storage_state = sessions.read_state(live.profile_id)
+            session_metadata = sessions.inspect(live.profile_id)
+            browser_profile = (
+                sessions.browser_profile_directory(live.profile_id)
+                if session_metadata.source_browser.endswith("_persistent")
+                else None
             )
         protection = OperatorProtectionConfiguration()
         adapter = PlaywrightGroupCaptureAdapter(
             storage_state,
             headless=headless,
             limits=_protection_limits(protection),
+            user_data_directory=browser_profile,
+            channel="chrome" if browser_profile is not None else None,
         )
         try:
             with adapter.capture_pages(
@@ -925,16 +940,27 @@ def import_browser_session(
 def login(
     profile: Annotated[str, typer.Option("--profile")],
     start_url: Annotated[str, typer.Option("--start-url")] = "https://www.facebook.com/",
+    channel: Annotated[str | None, typer.Option("--channel")] = "chrome",
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
 ) -> None:
-    """Prepare a session through a visible guided login."""
+    """Prepare a session through a visible guided login in a selected browser channel."""
     try:
-        state = collect_guided_storage_state(start_url)
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            sessions = SessionProfileService(database.connection, session_root)
+            browser_profile = sessions.browser_profile_directory(profile)
+        state = collect_guided_storage_state(
+            start_url,
+            channel=channel,
+            user_data_directory=browser_profile,
+        )
         with Database(output / "scanner.sqlite3") as database:
             database.migrate()
             metadata = SessionProfileService(database.connection, session_root).save_guided_state(
-                profile, state
+                profile,
+                state,
+                source_browser=f"playwright_{channel or 'chromium'}_persistent",
             )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")

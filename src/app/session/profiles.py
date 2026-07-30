@@ -76,9 +76,24 @@ class SessionProfileService:
         """Validate, encrypt, and persist an imported Playwright storage state."""
         return self._save(profile_id, "imported", source_browser, state)
 
-    def save_guided_state(self, profile_id: str, state: Mapping[str, object]) -> SessionMetadata:
+    def save_guided_state(
+        self,
+        profile_id: str,
+        state: Mapping[str, object],
+        *,
+        source_browser: str = "playwright_chromium",
+    ) -> SessionMetadata:
         """Persist a visible guided-login state with the imported-state metadata contract."""
-        return self._save(profile_id, "guided_login", "playwright_chromium", state)
+        return self._save(profile_id, "guided_login", source_browser, state)
+
+    def browser_profile_directory(self, profile_id: str) -> Path:
+        """Return one validated, scanner-owned persistent browser profile directory."""
+        self._path(profile_id)
+        directory = (self.session_root / "browser-profiles" / profile_id).resolve()
+        if not directory.is_relative_to(self.session_root):
+            raise SessionEnvelopeError("browser profile directory is outside the session root")
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     def read_state(self, profile_id: str) -> StorageState:
         """Decrypt and validate a session envelope for browser-context recreation."""

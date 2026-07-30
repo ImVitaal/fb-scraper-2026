@@ -66,7 +66,19 @@ def test_guided_login_uses_the_same_non_secret_metadata_contract(
     state = {"cookies": [], "origins": [{"origin": "https://example.test", "localStorage": []}]}
     output = tmp_path / "operator-data"
     session_root = tmp_path / "private-sessions"
-    monkeypatch.setattr("app.cli.main.collect_guided_storage_state", lambda _url: state)
+    captured: dict[str, object] = {}
+
+    def collect_state(
+        _url: str,
+        *,
+        channel: str | None = None,
+        user_data_directory: Path | None = None,
+    ):
+        captured["channel"] = channel
+        captured["user_data_directory"] = user_data_directory
+        return state
+
+    monkeypatch.setattr("app.cli.main.collect_guided_storage_state", collect_state)
 
     result = CliRunner().invoke(
         app,
@@ -83,8 +95,11 @@ def test_guided_login_uses_the_same_non_secret_metadata_contract(
     )
 
     assert result.exit_code == 0, result.output
+    assert captured["channel"] == "chrome"
+    assert captured["user_data_directory"] == session_root / "browser-profiles" / "profile-guided"
     metadata = json.loads(result.stdout)
     assert metadata["session_class"] == "guided_login"
+    assert metadata["source_browser"] == "playwright_chrome_persistent"
     assert set(metadata) == {
         "cookie_count",
         "created_at",

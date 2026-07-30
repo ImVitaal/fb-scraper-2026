@@ -250,6 +250,8 @@ paths and made no commits.
 - Guided login remains the supported one-time preparation route when copied Chrome profiles
   use application-bound encryption. The later discovery and collection workflow uses the
   encrypted scanner session without manual browser collection.
+- Guided login now uses a scanner-owned persistent Chrome profile outside the repository.
+  Capture and resume reopen that same profile through the encrypted session metadata.
 
 Root verification:
 

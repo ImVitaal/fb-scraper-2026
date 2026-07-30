@@ -18,12 +18,23 @@ def collect_guided_storage_state(
     start_url: str,
     *,
     continue_prompt: Callable[[str], str] = input,
+    channel: str | None = None,
+    user_data_directory: Path | None = None,
 ) -> StorageState:
     """Open a visible browser and capture state after operator-completed login."""
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch(headless=False)
-        try:
+        if user_data_directory is not None:
+            user_data_directory.mkdir(parents=True, exist_ok=True)
+            context = playwright.chromium.launch_persistent_context(
+                str(user_data_directory),
+                channel=channel,
+                headless=False,
+            )
+            browser = None
+        else:
+            browser = playwright.chromium.launch(headless=False, channel=channel)
             context = browser.new_context()
+        try:
             try:
                 page = context.new_page()
                 page.goto(start_url, wait_until="domcontentloaded")
@@ -32,7 +43,8 @@ def collect_guided_storage_state(
             finally:
                 context.close()
         finally:
-            browser.close()
+            if browser is not None:
+                browser.close()
     if not isinstance(state, dict):
         raise SessionEnvelopeError("guided login returned an invalid browser storage state")
     storage_state = cast(StorageState, state)
