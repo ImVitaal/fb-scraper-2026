@@ -1,8 +1,8 @@
 # Private Group Scanner — internal build brief
 
-**Status:** Fixture-backed Phases 1–3 test release
+**Status:** Phase 4 local-browser release candidate
 **Primary audience:** Technical operators and implementation agents
-**Current milestone:** Phase 4A — operator preflight and session health
+**Current milestone:** Phase 4F — controlled one-Group validation
 
 ## Mission
 
@@ -175,8 +175,8 @@ Phase 1 completes only when:
 
 ## Agent execution
 
-`LEAN_THREE_PHASE_COMPLETION_PLAN.md` is the current implementation source of
-truth. Record progress in `docs/phase-1/phase-1-log.md`.
+`OPERATOR_WORKING_RELEASE_PLAN.md` is the current implementation source of
+truth. Record progress in `docs/phase-4/phase-4-log.md`.
 
 Agents must:
 
@@ -214,6 +214,54 @@ uv run pgscan replay $result.run_id --offline --output $output --raw-root $raw
 Run `uv run pgscan run --guided` for the connected operator workflow.
 Use a strict TOML file for repeatable session, discovery, selection, and capture.
 
+Check the native Windows runtime:
+
+```powershell
+uv run pgscan doctor
+```
+
+Prepare and classify an encrypted session:
+
+```powershell
+uv run pgscan session import-browser `
+  --profile operator `
+  --browser-profile BROWSER_PROFILE_COPY `
+  --channel chrome
+uv run pgscan session health `
+  --profile operator `
+  --probe-url APP_AUTHENTICATED_URL
+```
+
+Use a copied, closed Chromium profile directory for `BROWSER_PROFILE_COPY`.
+The command exports storage state, encrypts it with DPAPI, and stores no password.
+
+Run live discovery and one selected Group with a strict TOML file:
+
+```toml
+[run]
+mode = "operator"
+output = "C:/Users/OPERATOR/AppData/Local/private-group-scanner"
+raw_root = "C:/Users/OPERATOR/AppData/Local/private-group-scanner/raw"
+session_root = "C:/Users/OPERATOR/AppData/Local/private-group-scanner/sessions"
+
+[session]
+method = "existing"
+profile = "operator"
+
+[target]
+method = "live_discovery"
+base_url = "APP_URL"
+keyword = "KEYWORD"
+location = "LOCATION"
+select = "GROUP_ID_OR_RANK"
+```
+
+```powershell
+uv run pgscan run --config operator.toml
+uv run pgscan inspect RUN_ID
+uv run pgscan replay RUN_ID --offline
+```
+
 Run the ten-Group synthetic reliability workflow:
 
 ```powershell
@@ -232,5 +280,6 @@ uv run pgscan compare `
   --output $output
 ```
 
-The repository contains the package, migrations, synthetic fixtures, tests, and working
-Phase 1 through Phase 3 commands. See the phase completion reports for verified limits.
+The repository now includes real local Chromium navigation, live discovery,
+raw-first capture, durable resume, APP extraction, inspection, replay, and exports.
+The controlled APP one-Group and ten-Group receipts remain environment-specific gates.

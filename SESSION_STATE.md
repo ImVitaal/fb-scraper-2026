@@ -1,7 +1,7 @@
 # Private Group Scanner — session state
 
-**Updated:** 2026-07-29
-**Current release:** Lean fixture-backed Phases 1–3 test release
+**Updated:** 2026-07-30
+**Current release:** Phase 4 local-browser release candidate
 **Active plan:** `OPERATOR_WORKING_RELEASE_PLAN.md`
 
 ## Current state
@@ -10,8 +10,13 @@
 - Baseline before this release: `8b18b18`.
 - Phase 1 integration: `94b80fb`.
 - Phase 2 integration: `0239aef`.
-- Phase 3 integration: the commit containing this state file.
-- Active milestone: Phase 4A, operator preflight and session health.
+- Phase 3 integration: `96f3c6e`.
+- Phase 4A integration: `90a8a5b`.
+- Phase 4B integration: `ec3f3b1`.
+- Phase 4C integration: `5c15f56`.
+- Phase 4 root integration: `8568625`.
+- Phase 4 resume correction: `98c515a`.
+- Active milestone: Phase 4F, controlled one-Group validation.
 - Product expansion remains deferred until the operator working-release gate passes.
 
 ## Delivered
@@ -49,6 +54,22 @@
 - Unsupported-field recording.
 - Separate measured-value and conclusion sections.
 
+### Phase 4A through 4E
+
+- Native Windows doctor checks pass.
+- Session health classifies ready, expired, challenged, restricted, and invalid.
+- Guided login, storage-state import, and local Chromium-profile import use encrypted envelopes.
+- One Playwright context persists across bounded capture interactions.
+- Opaque checkpoints precede each browser action.
+- APP extraction records Group, Post, top-level Comment, media, provenance, and null reasons.
+- Live keyword-and-location discovery stores raw bytes before parsing.
+- CLI capture and resume use multi-page browser capture.
+- CLI replay routes live runs through integrity-checked stored HTML.
+- Inspect reports pages, interactions, counts, health, failure class, and retries.
+- Live success writes CSV, JSON, standalone SQLite, manifest, and Markdown exports.
+- Local real-Chromium imported and guided workflows pass without replacing `_capture_selected`.
+- A real-Chromium interruption resumes with matching identifiers.
+
 ## Verification
 
 ```powershell
@@ -58,19 +79,16 @@ uv run ty check
 uv run pytest
 ```
 
-- Final tests: 99 passed.
-- Coverage remained above 80%.
-- Secret scan: zero findings.
+- Final tests: 133 passed.
+- Coverage: 81.61%.
+- Tracked-file secret scan: zero findings.
 - External fixture run, replay, batch, batch resume, and comparison commands passed.
 
 ## Current operator gaps
 
-- Live parsing still expects fixture-only `data-pgscan-*` markers.
-- Operator discovery still reads a supplied fixture capture.
-- CLI capture and resume still use the one-page path.
-- CLI replay does not route live HTML runs to stored-HTML replay.
-- Session health does not probe an authenticated APP route.
-- Controlled one-Group and ten-Group operator runs remain open.
+- A ready encrypted APP session is not present in the default session root.
+- The controlled APP one-Group receipt remains open.
+- The controlled ten-Group run must wait for the one-Group gate.
 
 ## Limits
 
@@ -80,4 +98,4 @@ uv run pytest
 - Keep product expansion deferred.
 
 See `OPERATOR_WORKING_RELEASE_PLAN.md`, `docs/test-release-completion-receipt.md`,
-and the phase completion reports.
+and `docs/phase-4/phase-4-completion-report.md`.
