@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
-from app.discovery import DiscoveryParser
+from app.discovery import AppDiscoveryParser, DiscoveryParser
 
 
 class TargetPreparationError(ValueError):
@@ -117,6 +117,36 @@ class TargetPreparationService:
         ]
         return TargetCampaign(campaign, tuple(candidates))
 
+    def add_live_discovery(
+        self,
+        raw_html: bytes,
+        *,
+        keyword: str,
+        location: str,
+        source_url: str,
+        raw_capture_id: str,
+    ) -> TargetCampaign:
+        """Persist ranked candidates from one raw-first APP discovery capture."""
+        result = AppDiscoveryParser().parse(
+            raw_html,
+            keyword=keyword,
+            location=location,
+            source_url=source_url,
+        )
+        campaign = self._create_campaign(result.keyword, result.location)
+        candidates = [
+            self._add_candidate(
+                campaign,
+                candidate.canonical_url,
+                candidate.name,
+                "discovery",
+                candidate.rank,
+                raw_capture_id=raw_capture_id,
+            )
+            for candidate in result.candidates
+        ]
+        return TargetCampaign(campaign, tuple(candidates))
+
     def select(self, campaign_id: str, candidate_id: str) -> SelectedTarget:
         """Select exactly one existing candidate from one campaign."""
         row = self.connection.execute(
@@ -207,7 +237,14 @@ class TargetPreparationService:
         return campaign_id
 
     def _add_candidate(
-        self, campaign_id: str, url: str, name: str | None, source: str, rank: int
+        self,
+        campaign_id: str,
+        url: str,
+        name: str | None,
+        source: str,
+        rank: int,
+        *,
+        raw_capture_id: str | None = None,
     ) -> TargetCandidate:
         candidate = self._candidate(url, name, source, rank)
         query_id = self.connection.execute(
@@ -220,13 +257,14 @@ class TargetPreparationService:
                     hit_id, query_id, group_id, rank, raw_capture_id, observed_at,
                     source, canonical_url, name
                 )
-                VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     candidate.candidate_id,
                     query_id,
                     candidate.group_id,
                     candidate.rank,
+                    raw_capture_id,
                     datetime.now(UTC).isoformat(),
                     candidate.source,
                     candidate.canonical_url,

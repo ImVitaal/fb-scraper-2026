@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 from typing import cast
 
 from playwright.sync_api import sync_playwright
@@ -34,4 +35,30 @@ def collect_guided_storage_state(
     storage_state = cast(StorageState, state)
     if not storage_state.get("cookies") and not storage_state.get("origins"):
         raise SessionEnvelopeError("guided login did not produce an authenticated session")
+    return storage_state
+
+
+def collect_imported_browser_profile_state(
+    profile_directory: Path,
+    *,
+    channel: str | None = None,
+) -> StorageState:
+    """Export state from one operator-selected local Chromium profile directory."""
+    if not profile_directory.is_dir():
+        raise ValueError("browser profile directory does not exist")
+    with sync_playwright() as playwright:
+        context = playwright.chromium.launch_persistent_context(
+            str(profile_directory),
+            channel=channel,
+            headless=True,
+        )
+        try:
+            state = context.storage_state()
+        finally:
+            context.close()
+    if not isinstance(state, dict):
+        raise SessionEnvelopeError("browser profile returned an invalid storage state")
+    storage_state = cast(StorageState, state)
+    if not storage_state.get("cookies") and not storage_state.get("origins"):
+        raise SessionEnvelopeError("browser profile did not contain an authenticated session")
     return storage_state

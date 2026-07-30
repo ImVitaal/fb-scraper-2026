@@ -49,7 +49,7 @@ class FixtureRunConfiguration:
 
 
 SessionMethod = Literal["existing", "imported", "guided"]
-TargetMethod = Literal["discovery", "url", "csv"]
+TargetMethod = Literal["discovery", "live_discovery", "url", "csv"]
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,7 @@ class OperatorTargetConfiguration:
     fixture: Path | None = None
     keyword: str | None = None
     location: str | None = None
+    base_url: str | None = None
     url: str | None = None
     csv_file: Path | None = None
 
@@ -141,11 +142,14 @@ class OperatorRunConfiguration:
         method = values.get("method")
         expected = {
             "discovery": {"method", "fixture", "keyword", "location", "select"},
+            "live_discovery": {"method", "base_url", "keyword", "location", "select"},
             "url": {"method", "url"},
             "csv": {"method", "csv_file", "select"},
         }
         if method not in expected:
-            raise ConfigurationError("[target].method must be discovery, url, or csv")
+            raise ConfigurationError(
+                "[target].method must be discovery, live_discovery, url, or csv"
+            )
         if set(values) != expected[method]:
             raise ConfigurationError(f"[target] has invalid fields for {method}")
         if method == "discovery":
@@ -153,6 +157,14 @@ class OperatorRunConfiguration:
                 method="discovery",
                 select=_text(values, "select", "target"),
                 fixture=_path(values, "fixture", parent, "target"),
+                keyword=_text(values, "keyword", "target"),
+                location=_text(values, "location", "target"),
+            )
+        if method == "live_discovery":
+            return OperatorTargetConfiguration(
+                method="live_discovery",
+                select=_text(values, "select", "target"),
+                base_url=_text(values, "base_url", "target").rstrip("/"),
                 keyword=_text(values, "keyword", "target"),
                 location=_text(values, "location", "target"),
             )

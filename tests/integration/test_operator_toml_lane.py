@@ -11,7 +11,16 @@ from typer.testing import CliRunner
 
 from app.cli.main import app
 from app.session import SessionProfileService
+from app.session.health import ProbeObservation
 from app.storage.database import Database
+
+
+@pytest.fixture(autouse=True)
+def _ready_session_probe(monkeypatch: MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "app.cli.main.probe_with_playwright",
+        lambda route, state: ProbeObservation(200, "/home", "authenticated"),
+    )
 
 
 def _write_discovery(path: Path) -> None:

@@ -20,6 +20,7 @@ from app.metrics import (
     directory_storage_bytes,
     process_memory_bytes,
 )
+from app.parsing.app_group import AppGroupExtractionAdapter
 from app.parsing.live_group import LiveGroupParser, UnsupportedLayoutError
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
@@ -111,6 +112,13 @@ class LiveCaptureWorkflow:
             cursor, pages_completed, seen_cursors = self._resume_position(
                 database.connection, job_id
             )
+            profile = database.connection.execute(
+                "SELECT session_class FROM session_profiles WHERE profile_id = ?",
+                (live_run.profile_id,),
+            ).fetchone()
+            if profile is None:
+                raise ValueError(f"session profile not found: {live_run.profile_id}")
+            session_class = str(profile["session_class"])
             pages_this_attempt = 0
 
             while True:
@@ -126,13 +134,24 @@ class LiveCaptureWorkflow:
                 # The raw file becomes durable before any parser sees the bytes.
                 stored = self.raw_store.write(capture_id, page.raw_html, suffix=".html")
                 try:
-                    group, posts, comments = LiveGroupParser().parse(
-                        page.raw_html,
-                        source_url=live_run.canonical_url,
-                        capture_id=capture_id,
-                        raw_sha256=stored.sha256,
-                        session_class="fixture",
-                    )
+                    if live_run.adapter_version == "app_rendered_html/1.0":
+                        group, posts, comments = AppGroupExtractionAdapter().parse(
+                            page.raw_html,
+                            source_url=live_run.canonical_url,
+                            capture_id=capture_id,
+                            raw_sha256=stored.sha256,
+                            session_class=session_class,
+                            observed_at=datetime.now(UTC),
+                            lower_bound=live_run.lower_bound,
+                        )
+                    else:
+                        group, posts, comments = LiveGroupParser().parse(
+                            page.raw_html,
+                            source_url=live_run.canonical_url,
+                            capture_id=capture_id,
+                            raw_sha256=stored.sha256,
+                            session_class=session_class,
+                        )
                 except UnsupportedLayoutError as error:
                     self._record_failure(
                         database,

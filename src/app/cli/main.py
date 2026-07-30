@@ -4,13 +4,17 @@ import json
 import os
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import uuid4
 
 import typer
+from playwright.sync_api import StorageState as PlaywrightStorageState
+from playwright.sync_api import sync_playwright
 
 from app import __version__
+from app.capture import GzipRawCaptureStore
 from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
 from app.configuration import (
     FixtureRunConfiguration,
@@ -19,14 +23,26 @@ from app.configuration import (
     OperatorTargetConfiguration,
 )
 from app.contracts.models import JobState
-from app.discovery import SessionDiscoveryFixtureAdapter
+from app.discovery import (
+    DiscoveryMode,
+    SessionDiscoveryAdapter,
+    SessionDiscoveryFixtureAdapter,
+)
+from app.discovery.live import DiscoveryPage
+from app.preflight import run_preflight
 from app.retention import RetentionService
-from app.session import SessionProfileService, collect_guided_storage_state
+from app.session import (
+    SessionProfileService,
+    collect_guided_storage_state,
+    collect_imported_browser_profile_state,
+    probe_with_playwright,
+)
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
-from app.storage.repositories import JobRepository
+from app.storage.repositories import JobRepository, RawCaptureMetadataRepository
 from app.targets import TargetPreparationService
 from app.workflows import BatchFixtureWorkflow, FixtureComparisonWorkflow, FixtureWorkflow
+from app.workflows.html_replay import StoredHtmlReplayWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
 
 app = typer.Typer(
@@ -66,6 +82,19 @@ def _default_output() -> Path:
 DEFAULT_OUTPUT = _default_output()
 DEFAULT_RAW_ROOT = DEFAULT_OUTPUT / "raw"
 DEFAULT_SESSION_ROOT = DEFAULT_OUTPUT / "sessions"
+
+
+@app.command()
+def doctor(
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
+    """Check whether this Windows installation can run operator collection."""
+    report = run_preflight(Path.cwd(), (output, raw_root, session_root))
+    typer.echo(report.to_json())
+    if not report.ready:
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -113,8 +142,21 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
         sessions = SessionProfileService(database.connection, configuration.session_root)
         _prepare_session(sessions, configuration.session)
         state = sessions.read_state(configuration.session.profile)
+        health = sessions.probe_health(
+            configuration.session.profile,
+            configuration.session.start_url,
+            probe_with_playwright,
+        )
+        if health.health.value != "ready":
+            raise ValueError(f"session health is {health.health.value}")
         targets = TargetPreparationService(database.connection)
-        selected = _prepare_target(targets, state, configuration.target)
+        selected = _prepare_target(
+            targets,
+            state,
+            configuration.target,
+            raw_root=configuration.raw_root,
+            raw_captures=RawCaptureMetadataRepository(database.connection),
+        )
     return _capture_selected(
         configuration.session.profile,
         selected.campaign_id,
@@ -150,6 +192,9 @@ def _prepare_target(
     targets: TargetPreparationService,
     state: Mapping[str, object],
     configuration: OperatorTargetConfiguration,
+    *,
+    raw_root: Path,
+    raw_captures: RawCaptureMetadataRepository,
 ):
     """Prepare and select exactly one configured Group."""
     if configuration.method == "url":
@@ -158,7 +203,7 @@ def _prepare_target(
     if configuration.method == "csv":
         assert configuration.csv_file is not None
         campaign = targets.add_csv(configuration.csv_file)
-    else:
+    elif configuration.method == "discovery":
         assert configuration.fixture is not None
         assert configuration.keyword is not None
         assert configuration.location is not None
@@ -168,9 +213,57 @@ def _prepare_target(
             keyword=configuration.keyword,
             location=configuration.location,
         )
+    else:
+        assert configuration.base_url is not None
+        assert configuration.keyword is not None
+        assert configuration.location is not None
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            try:
+                context = browser.new_context(storage_state=configuration_state(state))
+                try:
+                    page = context.new_page()
+                    captured = SessionDiscoveryAdapter(
+                        mode=DiscoveryMode.LIVE,
+                        base_url=configuration.base_url,
+                    ).capture(
+                        keyword=configuration.keyword,
+                        location=configuration.location,
+                        page=cast(DiscoveryPage, page),
+                    )
+                finally:
+                    context.close()
+            finally:
+                browser.close()
+        capture_id = sha256(captured.raw_html).hexdigest()
+        stored = GzipRawCaptureStore(raw_root).write(
+            capture_id,
+            captured.raw_html,
+            suffix=".discovery.html",
+        )
+        raw_captures.add(
+            capture_id=capture_id,
+            sha256=stored.sha256,
+            source_url=captured.source_url,
+            collected_at=datetime.now(UTC),
+            storage_path=stored.path.name,
+            byte_count=stored.byte_count,
+        )
+        campaign = targets.add_live_discovery(
+            captured.raw_html,
+            keyword=configuration.keyword,
+            location=configuration.location,
+            source_url=captured.source_url,
+            raw_capture_id=capture_id,
+        )
     assert configuration.select is not None
     candidate_id = _resolve_candidate(campaign.candidates, configuration.select)
     return targets.select(campaign.campaign_id, candidate_id)
+
+
+def configuration_state(state: Mapping[str, object]) -> PlaywrightStorageState:
+    """Cast validated encrypted profile state at the Playwright boundary."""
+    return cast(PlaywrightStorageState, dict(state))
 
 
 def _resolve_candidate(candidates, selector: str) -> str:
@@ -207,9 +300,12 @@ def _guided_operator_configuration(
         if session_method == "guided"
         else "https://www.facebook.com/"
     )
-    target_method = typer.prompt("Target method (discovery, url, csv)", default="discovery").strip()
-    if target_method not in {"discovery", "url", "csv"}:
-        raise ValueError("target method must be discovery, url, or csv")
+    target_method = typer.prompt(
+        "Target method (live_discovery, discovery, url, csv)",
+        default="live_discovery",
+    ).strip()
+    if target_method not in {"live_discovery", "discovery", "url", "csv"}:
+        raise ValueError("target method must be live_discovery, discovery, url, or csv")
     if target_method == "url":
         target = OperatorTargetConfiguration(method="url", url=typer.prompt("Group URL").strip())
     elif target_method == "csv":
@@ -218,10 +314,18 @@ def _guided_operator_configuration(
             csv_file=Path(typer.prompt("CSV file")).expanduser().resolve(),
             select=typer.prompt("Select candidate by Group id or rank").strip(),
         )
-    else:
+    elif target_method == "discovery":
         target = OperatorTargetConfiguration(
             method="discovery",
-            fixture=Path(typer.prompt("Synthetic discovery capture")).expanduser().resolve(),
+            fixture=Path(typer.prompt("Fixture discovery capture")).expanduser().resolve(),
+            keyword=typer.prompt("Keyword").strip(),
+            location=typer.prompt("Location").strip(),
+            select=typer.prompt("Select candidate by Group id or rank").strip(),
+        )
+    else:
+        target = OperatorTargetConfiguration(
+            method="live_discovery",
+            base_url=typer.prompt("APP base URL", default="https://www.facebook.com").strip(),
             keyword=typer.prompt("Keyword").strip(),
             location=typer.prompt("Location").strip(),
             select=typer.prompt("Select candidate by Group id or rank").strip(),
@@ -261,10 +365,19 @@ def _capture_selected(
             profile,
             selected,
             datetime.now(UTC) - timedelta(days=30),
-            "playwright_group/1.0",
+            "app_rendered_html/1.0",
         )
-    html = PlaywrightGroupCaptureAdapter(state).capture_group(selected.canonical_url)
-    result = LiveCaptureWorkflow(output, raw_root).capture_html(job_id, html)
+    adapter = PlaywrightGroupCaptureAdapter(state)
+    with adapter.capture_pages(
+        selected.canonical_url,
+        lower_bound=datetime.now(UTC) - timedelta(days=30),
+    ) as capture_page:
+        result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+            job_id,
+            capture_page,
+            max_pages=adapter.limits.max_pages,
+        )
+    StoredHtmlReplayWorkflow(output, raw_root).replay(job_id, offline=True)
     return {
         "identifiers": list(result.identifiers),
         "job_id": result.job_id,
@@ -306,6 +419,41 @@ def inspect(
             database.migrate()
             state = JobRepository(database.connection).get_state(run_id)
             live = LiveRunRepository(database.connection).get(run_id)
+            page_row = database.connection.execute(
+                """
+                SELECT COUNT(*) AS pages, COALESCE(MAX(interaction_number), 0) AS interactions
+                FROM pagination_checkpoints
+                WHERE task_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            counts = database.connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM groups WHERE group_id = ?) AS groups,
+                    (SELECT COUNT(*) FROM posts WHERE group_id = ?) AS posts,
+                    (SELECT COUNT(*) FROM comments WHERE group_id = ?) AS comments
+                """,
+                (live.group_id, live.group_id, live.group_id),
+            ).fetchone()
+            session = database.connection.execute(
+                "SELECT health FROM session_profiles WHERE profile_id = ?",
+                (live.profile_id,),
+            ).fetchone()
+            attempts = database.connection.execute(
+                "SELECT COUNT(*) AS count FROM attempts WHERE task_id = ?",
+                (run_id,),
+            ).fetchone()
+            failure = database.connection.execute(
+                """
+                SELECT failure_class
+                FROM failures
+                WHERE attempt_id IN (SELECT attempt_id FROM attempts WHERE task_id = ?)
+                ORDER BY recorded_at DESC
+                LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
@@ -314,8 +462,18 @@ def inspect(
             {
                 "canonical_url": live.canonical_url,
                 "group_id": live.group_id,
+                "counts": {
+                    "comments": int(counts["comments"]),
+                    "groups": int(counts["groups"]),
+                    "posts": int(counts["posts"]),
+                },
+                "failure_class": failure["failure_class"] if failure is not None else None,
+                "interactions": int(page_row["interactions"]),
                 "job_id": run_id,
                 "lower_bound": live.lower_bound.isoformat(),
+                "pages": int(page_row["pages"]),
+                "retries": max(0, int(attempts["count"]) - 1),
+                "session_health": session["health"] if session is not None else "session_invalid",
                 "state": state.value,
             },
             sort_keys=True,
@@ -341,8 +499,16 @@ def resume(
             storage_state = SessionProfileService(database.connection, session_root).read_state(
                 live.profile_id
             )
-        html = PlaywrightGroupCaptureAdapter(storage_state).capture_group(live.canonical_url)
-        result = LiveCaptureWorkflow(output, raw_root).capture_html(run_id, html)
+        adapter = PlaywrightGroupCaptureAdapter(storage_state)
+        with adapter.capture_pages(
+            live.canonical_url, lower_bound=live.lower_bound
+        ) as capture_page:
+            result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+                run_id,
+                capture_page,
+                max_pages=adapter.limits.max_pages,
+            )
+        StoredHtmlReplayWorkflow(output, raw_root).replay(run_id, offline=True)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
@@ -367,7 +533,18 @@ def replay(
 ) -> None:
     """Replay one stored raw capture without network access."""
     try:
-        result = FixtureWorkflow(output, raw_root).replay(run_id, offline=offline)
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            live = database.connection.execute(
+                "SELECT 1 FROM live_runs WHERE job_id = ?",
+                (run_id,),
+            ).fetchone()
+        workflow = (
+            StoredHtmlReplayWorkflow(output, raw_root)
+            if live is not None
+            else FixtureWorkflow(output, raw_root)
+        )
+        result = workflow.replay(run_id, offline=offline)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
@@ -453,6 +630,33 @@ def import_session(
     typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
 
 
+@session_app.command("import-browser")
+def import_browser_session(
+    profile: Annotated[str, typer.Option("--profile")],
+    browser_profile: Annotated[
+        Path,
+        typer.Option("--browser-profile", exists=True, file_okay=False, readable=True),
+    ],
+    channel: Annotated[str | None, typer.Option("--channel")] = None,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
+    """Import one supported local Chromium profile into an encrypted envelope."""
+    try:
+        state = collect_imported_browser_profile_state(browser_profile, channel=channel)
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            metadata = SessionProfileService(database.connection, session_root).import_state(
+                profile,
+                state,
+                source_browser=channel or "chromium",
+            )
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
+
+
 @session_app.command()
 def login(
     profile: Annotated[str, typer.Option("--profile")],
@@ -489,6 +693,28 @@ def inspect_session(
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
     typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
+
+
+@session_app.command("health")
+def session_health(
+    profile: Annotated[str, typer.Option("--profile")],
+    probe_url: Annotated[str, typer.Option("--probe-url")],
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
+    """Classify one encrypted session through an authenticated route."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            result = SessionProfileService(database.connection, session_root).probe_health(
+                profile, probe_url, probe_with_playwright
+            )
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+    if result.health.value != "ready":
+        raise typer.Exit(1)
 
 
 @session_app.command()

@@ -66,9 +66,15 @@ class SessionProfileService:
         ):
             raise SessionEnvelopeError("session root must be outside the repository")
 
-    def import_state(self, profile_id: str, state: Mapping[str, object]) -> SessionMetadata:
+    def import_state(
+        self,
+        profile_id: str,
+        state: Mapping[str, object],
+        *,
+        source_browser: str = "imported_storage_state",
+    ) -> SessionMetadata:
         """Validate, encrypt, and persist an imported Playwright storage state."""
-        return self._save(profile_id, "imported", "imported_storage_state", state)
+        return self._save(profile_id, "imported", source_browser, state)
 
     def save_guided_state(self, profile_id: str, state: Mapping[str, object]) -> SessionMetadata:
         """Persist a visible guided-login state with the imported-state metadata contract."""
