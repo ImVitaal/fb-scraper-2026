@@ -44,6 +44,7 @@ from app.targets import TargetPreparationService
 from app.workflows import BatchFixtureWorkflow, FixtureComparisonWorkflow, FixtureWorkflow
 from app.workflows.html_replay import StoredHtmlReplayWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
+from app.workflows.operator_receipt import OperatorRunReceiptWriter
 
 app = typer.Typer(
     name="pgscan",
@@ -163,6 +164,7 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
         output=configuration.output,
         raw_root=configuration.raw_root,
         session_root=configuration.session_root,
+        headless=configuration.headless,
     )
 
 
@@ -341,6 +343,7 @@ def _guided_operator_configuration(
             start_url=start_url,
         ),
         target=target,
+        headless=False,
     )
 
 
@@ -351,6 +354,7 @@ def _capture_selected(
     output: Path,
     raw_root: Path,
     session_root: Path,
+    headless: bool = False,
 ) -> dict[str, object]:
     """Capture the selected Group through its encrypted browser session."""
     job_id = str(uuid4())
@@ -367,7 +371,7 @@ def _capture_selected(
             datetime.now(UTC) - timedelta(days=30),
             "app_rendered_html/1.0",
         )
-    adapter = PlaywrightGroupCaptureAdapter(state)
+    adapter = PlaywrightGroupCaptureAdapter(state, headless=headless)
     with adapter.capture_pages(
         selected.canonical_url,
         lower_bound=datetime.now(UTC) - timedelta(days=30),
@@ -377,10 +381,14 @@ def _capture_selected(
             capture_page,
             max_pages=adapter.limits.max_pages,
         )
-    StoredHtmlReplayWorkflow(output, raw_root).replay(job_id, offline=True)
+    delivery = StoredHtmlReplayWorkflow(output, raw_root).replay(job_id, offline=True)
+    receipt = OperatorRunReceiptWriter(output).write(job_id, delivery, adapter.limits)
     return {
         "identifiers": list(result.identifiers),
         "job_id": result.job_id,
+        "normalized_sha256": delivery.normalized_sha256,
+        "receipt": str(receipt.path),
+        "receipt_sha256": receipt.sha256,
         "state": result.state.value,
     }
 
@@ -392,6 +400,7 @@ def capture(
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
     session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+    headless: Annotated[bool, typer.Option("--headless")] = False,
 ) -> None:
     """Capture the selected Group through its encrypted browser session."""
     try:
@@ -401,6 +410,7 @@ def capture(
             output=output,
             raw_root=raw_root,
             session_root=session_root,
+            headless=headless,
         )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
@@ -487,6 +497,7 @@ def resume(
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
     session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+    headless: Annotated[bool, typer.Option("--headless")] = False,
 ) -> None:
     """Resume one interrupted run."""
     try:
@@ -499,7 +510,7 @@ def resume(
             storage_state = SessionProfileService(database.connection, session_root).read_state(
                 live.profile_id
             )
-        adapter = PlaywrightGroupCaptureAdapter(storage_state)
+        adapter = PlaywrightGroupCaptureAdapter(storage_state, headless=headless)
         with adapter.capture_pages(
             live.canonical_url, lower_bound=live.lower_bound
         ) as capture_page:
@@ -508,7 +519,8 @@ def resume(
                 capture_page,
                 max_pages=adapter.limits.max_pages,
             )
-        StoredHtmlReplayWorkflow(output, raw_root).replay(run_id, offline=True)
+        delivery = StoredHtmlReplayWorkflow(output, raw_root).replay(run_id, offline=True)
+        receipt = OperatorRunReceiptWriter(output).write(run_id, delivery, adapter.limits)
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
@@ -517,6 +529,9 @@ def resume(
             {
                 "identifiers": list(result.identifiers),
                 "job_id": result.job_id,
+                "normalized_sha256": delivery.normalized_sha256,
+                "receipt": str(receipt.path),
+                "receipt_sha256": receipt.sha256,
                 "state": result.state.value,
             },
             sort_keys=True,
@@ -637,19 +652,24 @@ def import_browser_session(
         Path,
         typer.Option("--browser-profile", exists=True, file_okay=False, readable=True),
     ],
+    profile_name: Annotated[str, typer.Option("--profile-name")] = "Default",
     channel: Annotated[str | None, typer.Option("--channel")] = None,
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
 ) -> None:
     """Import one supported local Chromium profile into an encrypted envelope."""
     try:
-        state = collect_imported_browser_profile_state(browser_profile, channel=channel)
+        state = collect_imported_browser_profile_state(
+            browser_profile,
+            profile_name=profile_name,
+            channel=channel,
+        )
         with Database(output / "scanner.sqlite3") as database:
             database.migrate()
             metadata = SessionProfileService(database.connection, session_root).import_state(
                 profile,
                 state,
-                source_browser=channel or "chromium",
+                source_browser=f"{channel or 'chromium'}:{profile_name}",
             )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")

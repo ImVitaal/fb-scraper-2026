@@ -85,6 +85,7 @@ class OperatorRunConfiguration:
     session_root: Path
     session: OperatorSessionConfiguration
     target: OperatorTargetConfiguration
+    headless: bool = False
 
     @classmethod
     def load(cls, path: Path) -> OperatorRunConfiguration:
@@ -95,16 +96,23 @@ class OperatorRunConfiguration:
                 "operator configuration must contain [run], [session], and [target]"
             )
         run = _table(payload, "run")
-        if set(run) != {"mode", "output", "raw_root", "session_root"}:
-            raise ConfigurationError("[run] must contain mode, output, raw_root, and session_root")
+        required_run = {"mode", "output", "raw_root", "session_root"}
+        if not required_run.issubset(run) or set(run) - (required_run | {"headless"}):
+            raise ConfigurationError(
+                "[run] must contain mode, output, raw_root, and session_root; headless is optional"
+            )
         if run.get("mode") != "operator":
             raise ConfigurationError("[run].mode must be 'operator'")
+        headless = run.get("headless", False)
+        if not isinstance(headless, bool):
+            raise ConfigurationError("[run].headless must be true or false")
         return cls(
             output=_path(run, "output", path.parent, "run"),
             raw_root=_path(run, "raw_root", path.parent, "run"),
             session_root=_path(run, "session_root", path.parent, "run"),
             session=cls._session(_table(payload, "session"), path.parent),
             target=cls._target(_table(payload, "target"), path.parent),
+            headless=headless,
         )
 
     @staticmethod

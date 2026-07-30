@@ -7,6 +7,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from hashlib import sha256
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -99,6 +100,7 @@ def test_local_real_browser_runs_capture_and_offline_replay_without_patching_cap
             output=output,
             raw_root=raw_root,
             session_root=session_root,
+            headless=True,
         )
 
     assert captured["state"] == "succeeded"
@@ -108,6 +110,24 @@ def test_local_real_browser_runs_capture_and_offline_replay_without_patching_cap
         "post:9200001",
     ]
     run_id = str(captured["job_id"])
+    receipt_path = Path(str(captured["receipt"]))
+    receipt_bytes = receipt_path.read_bytes()
+    receipt = json.loads(receipt_bytes)
+    assert captured["receipt_sha256"] == sha256(receipt_bytes).hexdigest()
+    assert receipt["normalized_sha256"] == captured["normalized_sha256"]
+    assert receipt["session_class"] == "imported"
+    assert receipt["state"] == "succeeded"
+    assert receipt["counts"] == {
+        "comments": 1,
+        "failures": 0,
+        "groups": 1,
+        "posts": 1,
+    }
+    assert receipt["metrics"]["run"] is not None
+    assert receipt["metrics"]["replay"] is not None
+    assert receipt["metrics"]["resume"] is None
+    assert "app.invalid" not in receipt_path.read_text(encoding="utf-8")
+    assert "local-browser" not in receipt_path.read_text(encoding="utf-8")
     assert {
         path.name for path in (output / "exports").iterdir() if path.name.startswith(run_id)
     } >= {
@@ -176,6 +196,7 @@ def test_operator_config_uses_real_browser_live_discovery_and_group_capture(
             f"""
             [run]
             mode = "operator"
+            headless = true
             output = "{output.as_posix()}"
             raw_root = "{raw_root.as_posix()}"
             session_root = "{session_root.as_posix()}"
@@ -230,6 +251,7 @@ def test_operator_config_uses_real_browser_live_discovery_and_group_capture(
 
 def test_real_browser_interruption_resumes_from_durable_checkpoint(
     tmp_path: Path,
+    monkeypatch: MonkeyPatch,
 ) -> None:
     output = tmp_path / "output"
     raw_root = tmp_path / "raw"
@@ -270,21 +292,41 @@ def test_real_browser_interruption_resumes_from_durable_checkpoint(
                 interrupt_after_pages=1,
             )
 
-        resumed_adapter = PlaywrightGroupCaptureAdapter({"cookies": [], "origins": []})
-        with resumed_adapter.capture_pages(
-            local_url,
-            lower_bound=lower_bound,
-        ) as capture:
-            resumed = LiveCaptureWorkflow(output, raw_root).capture_pages(
+        class LocalBrowserAdapter(PlaywrightGroupCaptureAdapter):
+            def capture_pages(
+                self,
+                target_url: str,
+                *,
+                lower_bound: datetime | None = None,
+            ):
+                return super().capture_pages(local_url, lower_bound=lower_bound)
+
+        monkeypatch.setattr("app.cli.main.PlaywrightGroupCaptureAdapter", LocalBrowserAdapter)
+        resumed = CliRunner().invoke(
+            app,
+            [
+                "resume",
                 job_id,
-                capture,
-                max_pages=resumed_adapter.limits.max_pages,
-            )
+                "--headless",
+                "--output",
+                str(output),
+                "--raw-root",
+                str(raw_root),
+                "--session-root",
+                str(session_root),
+            ],
+        )
 
     assert interrupted_adapter.closed
-    assert resumed_adapter.closed
-    assert resumed.identifiers == (
+    assert resumed.exit_code == 0, resumed.output
+    payload = json.loads(resumed.stdout)
+    assert tuple(payload["identifiers"]) == (
         "comment:9300001",
         "group:9100001",
         "post:9200001",
     )
+    receipt = json.loads(Path(payload["receipt"]).read_text(encoding="utf-8"))
+    assert receipt["metrics"]["resume"] is not None
+    assert receipt["metrics"]["replay"] is not None
+    assert len(list(raw_root.glob("*.html.gz"))) == 1
+    assert len(receipt["raw_captures"]) == 1

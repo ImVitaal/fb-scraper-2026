@@ -44,6 +44,7 @@ def test_operator_configuration_loads_imported_discovery_workflow(tmp_path: Path
     assert configuration.target.method == "discovery"
     assert configuration.target.fixture == tmp_path / "fixtures" / "discovery.html"
     assert configuration.target.select == "garden-top"
+    assert configuration.headless is False
 
 
 @pytest.mark.parametrize(

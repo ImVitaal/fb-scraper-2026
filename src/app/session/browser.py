@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from shutil import copy2, copytree
+from tempfile import TemporaryDirectory
 from typing import cast
 
 from playwright.sync_api import sync_playwright
@@ -39,26 +41,66 @@ def collect_guided_storage_state(
 
 
 def collect_imported_browser_profile_state(
-    profile_directory: Path,
+    user_data_directory: Path,
     *,
+    profile_name: str = "Default",
     channel: str | None = None,
 ) -> StorageState:
-    """Export state from one operator-selected local Chromium profile directory."""
-    if not profile_directory.is_dir():
-        raise ValueError("browser profile directory does not exist")
-    with sync_playwright() as playwright:
-        context = playwright.chromium.launch_persistent_context(
-            str(profile_directory),
-            channel=channel,
-            headless=True,
+    """Export state from a temporary copy of one local Chromium profile."""
+    if not user_data_directory.is_dir():
+        raise ValueError("browser user-data directory does not exist")
+    if (
+        not profile_name
+        or profile_name in {".", ".."}
+        or "/" in profile_name
+        or "\\" in profile_name
+    ):
+        raise ValueError("browser profile name is invalid")
+    profile_directory = user_data_directory / profile_name
+    local_state = user_data_directory / "Local State"
+    if not profile_directory.is_dir() or not local_state.is_file():
+        raise ValueError("browser user-data directory lacks the selected profile or Local State")
+
+    with TemporaryDirectory(prefix="pgscan-browser-import-") as temporary:
+        staged_root = Path(temporary)
+        copy2(local_state, staged_root / "Local State")
+        copytree(
+            profile_directory,
+            staged_root / profile_name,
+            ignore=_browser_copy_ignore,
         )
-        try:
-            state = context.storage_state()
-        finally:
-            context.close()
+        with sync_playwright() as playwright:
+            context = playwright.chromium.launch_persistent_context(
+                str(staged_root),
+                args=[f"--profile-directory={profile_name}"],
+                channel=channel,
+                headless=True,
+            )
+            try:
+                state = context.storage_state()
+            finally:
+                context.close()
     if not isinstance(state, dict):
         raise SessionEnvelopeError("browser profile returned an invalid storage state")
     storage_state = cast(StorageState, state)
     if not storage_state.get("cookies") and not storage_state.get("origins"):
         raise SessionEnvelopeError("browser profile did not contain an authenticated session")
     return storage_state
+
+
+def _browser_copy_ignore(directory: str, names: list[str]) -> set[str]:
+    """Skip disposable browser caches while retaining session databases."""
+    ignored_names = {
+        "Cache",
+        "Code Cache",
+        "Crashpad",
+        "DawnCache",
+        "GPUCache",
+        "GrShaderCache",
+        "GraphiteDawnCache",
+        "ShaderCache",
+    }
+    ignored = {name for name in names if name in ignored_names}
+    if Path(directory).name == "Service Worker":
+        ignored.update(name for name in names if name in {"CacheStorage", "ScriptCache"})
+    return ignored

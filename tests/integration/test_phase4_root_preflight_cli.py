@@ -95,10 +95,12 @@ def test_import_browser_encrypts_profile_state_without_printing_secrets(
 ) -> None:
     browser_profile = tmp_path / "browser-profile"
     browser_profile.mkdir()
+    (browser_profile / "Local State").write_text("{}", encoding="utf-8")
+    (browser_profile / "Default").mkdir()
     opaque_value = "imported-browser-value"
     monkeypatch.setattr(
         "app.cli.main.collect_imported_browser_profile_state",
-        lambda directory, channel=None: {
+        lambda directory, profile_name="Default", channel=None: {
             "cookies": [{"name": "session", "value": opaque_value}],
             "origins": [],
         },
@@ -125,5 +127,5 @@ def test_import_browser_encrypts_profile_state_without_printing_secrets(
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
     assert payload["session_class"] == "imported"
-    assert payload["source_browser"] == "chrome"
+    assert payload["source_browser"] == "chrome:Default"
     assert opaque_value not in result.stdout
