@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from app.capture import GzipRawCaptureStore, RawCaptureIntegrityError
 from app.contracts.models import CommentRecord, GroupRecord, PostRecord
+from app.parsing.app_group import AppGroupExtractionAdapter
 from app.parsing.live_group import LiveGroupParser
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
@@ -32,6 +34,13 @@ class StoredHtmlReplayWorkflow:
             with Database(self.database_path) as database:
                 database.migrate()
                 live_run = LiveRunRepository(database.connection).get(job_id)
+                profile = database.connection.execute(
+                    "SELECT session_class FROM session_profiles WHERE profile_id = ?",
+                    (live_run.profile_id,),
+                ).fetchone()
+                if profile is None:
+                    raise ValueError(f"replay session profile is missing: {live_run.profile_id}")
+                session_class = str(profile["session_class"])
                 pages = database.connection.execute(
                     """
                     SELECT
@@ -39,7 +48,8 @@ class StoredHtmlReplayWorkflow:
                         capture.capture_id,
                         capture.sha256,
                         capture.storage_path,
-                        capture.byte_count
+                        capture.byte_count,
+                        capture.collected_at
                     FROM pagination_checkpoints AS checkpoint
                     JOIN tasks AS task ON task.task_id = checkpoint.task_id
                     JOIN raw_captures AS capture
@@ -54,7 +64,6 @@ class StoredHtmlReplayWorkflow:
             group: GroupRecord | None = None
             posts_by_id: dict[str, PostRecord] = {}
             comments_by_id: dict[str, CommentRecord] = {}
-            parser = LiveGroupParser()
             for page in pages:
                 capture_id = str(page["capture_id"])
                 storage_path = str(page["storage_path"])
@@ -65,13 +74,28 @@ class StoredHtmlReplayWorkflow:
                 raw_html = self.raw_store.read(capture_id, str(page["sha256"]), suffix=".html")
                 if page["byte_count"] is not None and len(raw_html) != int(page["byte_count"]):
                     raise RawCaptureIntegrityError(f"raw capture byte count mismatch: {capture_id}")
-                parsed_group, parsed_posts, parsed_comments = parser.parse(
-                    raw_html,
-                    source_url=live_run.canonical_url,
-                    capture_id=capture_id,
-                    raw_sha256=str(page["sha256"]),
-                    session_class="fixture",
-                )
+                if live_run.adapter_version == "app_rendered_html/1.0":
+                    parsed_group, parsed_posts, parsed_comments = AppGroupExtractionAdapter().parse(
+                        raw_html,
+                        source_url=live_run.canonical_url,
+                        capture_id=capture_id,
+                        raw_sha256=str(page["sha256"]),
+                        session_class=session_class,
+                        observed_at=datetime.fromisoformat(str(page["collected_at"])),
+                        lower_bound=live_run.lower_bound,
+                    )
+                elif live_run.adapter_version in {"fixture/1.0", "playwright_group/1.0"}:
+                    parsed_group, parsed_posts, parsed_comments = LiveGroupParser().parse(
+                        raw_html,
+                        source_url=live_run.canonical_url,
+                        capture_id=capture_id,
+                        raw_sha256=str(page["sha256"]),
+                        session_class=session_class,
+                    )
+                else:
+                    raise ValueError(
+                        f"stored HTML adapter version is unsupported: {live_run.adapter_version}"
+                    )
                 if parsed_group.group_id != live_run.group_id:
                     raise ValueError("replayed Group does not match selected target")
                 if group is None:

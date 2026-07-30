@@ -23,6 +23,7 @@ class DiscoveryCandidate:
     location_score: float
     score: float
     rank: int
+    matching_evidence: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         """Return a non-secret operator-facing representation."""
