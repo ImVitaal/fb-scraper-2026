@@ -18,22 +18,33 @@
 - Current suite: 140 passed with 82.08% coverage.
 - Tracked-file secret findings: zero.
 
-## Remaining gate
+## Remaining work
 
-Complete one controlled APP Group using both session methods.
-Then run the accepted workflow across ten Groups.
+1. Implement the simple pacing controls.
+2. Import the saved Chrome `Default` session.
+3. Discover and select the Groups.
+4. Complete the controlled one-Group gate.
+5. Complete the controlled ten-Group gate.
+6. Refresh receipts and completion records.
 
-Provide one bundle:
+Use:
 
 ```text
-SESSION_METHOD=guided|browser_profile
-PROFILE_NAME=Default|Profile 2|Profile 3
-TARGET=GROUP_URL|KEYWORD+LOCATION
+SESSION_METHOD=browser_profile
+PROFILE_NAME=Default
+KEYWORD=local community
+LOCATION=London
 ```
 
 Close the source browser before browser-profile import.
 Keep private captures and session data outside Git.
 Do not start Phase 4G or product expansion before the Phase 4F receipt passes.
+
+Follow the minimal plan:
+
+- `docs/phase-4/scraper-architecture-and-account-protection-plan.md`
+
+The operator selected automatic Group discovery. Do not request Group URLs.
 
 ## Source of truth
 
