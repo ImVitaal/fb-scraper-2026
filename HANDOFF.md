@@ -18,14 +18,37 @@
 - Current suite: 140 passed with 82.08% coverage.
 - Tracked-file secret findings: zero.
 
-## Remaining work
+## Next phase — protected operator validation
 
-1. Implement the simple pacing controls.
+### Mandatory account-protection gate
+
+Complete these controls before any live Group collection:
+
+1. Keep one worker and one active Group.
+2. Add configurable delays before browser actions.
+3. Use 10–20 seconds after navigation.
+4. Use 6–12 seconds after scrolling.
+5. Use 3–7 seconds after expansion.
+6. Retry transient failures twice with 30-second and 120-second delays.
+7. Stop immediately on login, checkpoint, CAPTCHA, lock, restriction, 401, 403, or 429.
+8. Skip completed Posts during later runs.
+9. Wait 15 minutes between Groups.
+10. Record delays, retries, and stop reasons in the operator receipt.
+
+Do not rotate accounts, cookies, proxies, fingerprints, or browser identities.
+
+Require tests for pacing, stop conditions, known-Post skipping, and receipt redaction.
+
+### Execution order
+
+1. Implement and verify the account-protection gate.
 2. Import the saved Chrome `Default` session.
 3. Discover and select the Groups.
-4. Complete the controlled one-Group gate.
-5. Complete the controlled ten-Group gate.
-6. Refresh receipts and completion records.
+4. Run the lowest-volume valid Group first.
+5. Review its receipt and session health.
+6. Complete the controlled one-Group gate.
+7. Complete nine remaining Groups sequentially.
+8. Refresh receipts and completion records.
 
 Use:
 
