@@ -35,9 +35,9 @@
 | Supported required-field accuracy | 100% on labelled fixtures |
 | Pagination completeness | 100% on labelled fixtures |
 | Duplicate canonical records | 0% |
-| Tests and coverage | 140 passed; 82.08% |
+| Tests and coverage | 174 passed; 81.58% |
 | Tracked secret findings | 0 |
-| Controlled APP one-Group | Pending |
+| Controlled APP one-Group | Pending: copied Chrome 150 `Default` profile did not produce importable state |
 | Controlled APP ten-Group | Waiting for one-Group gate |
 
 ## Working operator commands
@@ -69,7 +69,13 @@ Operator capture opens visibly by default. Use `--headless` only for automation.
 
 The local operator architecture is connected and verified with real Chromium.
 The default session root contains no ready encrypted APP profile.
-The controlled one-Group gate needs one operator-provided session and target bundle.
+The controlled browser-profile attempt closed Chrome and passed all nine doctor checks.
+Import failed before discovery because the copied Chrome 150 profile did not
+produce storage state.
+The source contained nine APP-domain rows, including eight unexpired persistent
+rows, and Playwright reported token decryption failures.
+The controlled one-Group gate remains pending on copied-profile decryption
+compatibility.
 A stable local resume receipt records raw-set, identifier-set, normalized, export, metric, version, count, and limit evidence.
 The ten-Group gate remains closed until that receipt passes.
 

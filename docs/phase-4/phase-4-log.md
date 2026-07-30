@@ -157,3 +157,52 @@ TARGET=GROUP_URL|KEYWORD+LOCATION
 
 Private raw captures and session material must remain outside Git.
 
+## Phase 4F controlled attempt — browser profile `Default`
+
+The root agent ran the required sequence with external roots.
+
+```powershell
+uv run pgscan doctor `
+  --output "$env:LOCALAPPDATA\private-group-scanner" `
+  --raw-root "$env:LOCALAPPDATA\private-group-scanner\raw" `
+  --session-root "$env:LOCALAPPDATA\private-group-scanner\sessions"
+
+uv run pgscan session import-browser `
+  --profile operator `
+  --browser-profile "$env:LOCALAPPDATA\Google\Chrome\User Data" `
+  --profile-name Default `
+  --channel chrome `
+  --output "$env:LOCALAPPDATA\private-group-scanner" `
+  --session-root "$env:LOCALAPPDATA\private-group-scanner\sessions"
+
+uv run pgscan session health `
+  --profile operator `
+  --probe-url "https://www.facebook.com/groups/" `
+  --output "$env:LOCALAPPDATA\private-group-scanner" `
+  --session-root "$env:LOCALAPPDATA\private-group-scanner\sessions"
+```
+
+Results:
+
+- Branch and commit: `main`, `fd40d4d`.
+- The initial worktree contained only the untracked one-shot prompt.
+- The prompt is preserved in `stash@{0}`; the worktree was then clean.
+- Doctor: ready; all nine checks passed.
+- Chrome processes before import: zero.
+- Import: failed with
+  `browser profile did not contain an authenticated session`.
+- Health: `invalid` with `session_state_invalid`; exit code 1.
+- Source APP-domain metadata: nine rows; one session row, eight unexpired
+  persistent rows, zero expired rows.
+- Chrome 150 debug output reported token decryption failures in the copied
+  profile.
+- A focused attempt to retain the Windows password-store defaults did not
+  change the runtime result. The temporary code and test were reverted.
+- No encrypted `operator` profile was written.
+- No discovery, target selection, Group capture, export, replay, or receipt ran.
+- Account-stop conditions did not occur.
+- Phase 4F remains pending. Phase 4G remains gated.
+
+Exact gate result: copied Chrome `Default` profile decryption is the single
+current runtime-compatibility blocker. Do not broaden target discovery.
+

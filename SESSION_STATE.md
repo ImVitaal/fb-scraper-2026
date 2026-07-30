@@ -101,7 +101,15 @@ uv run pytest
 ## Current operator gaps
 
 - A ready encrypted APP session is not present in the default session root.
-- The source Chrome profile is open and its cookie databases are locked.
+- Chrome `Default` was closed and readable during the 2026-07-30 controlled attempt.
+- Browser-profile import returned
+  `browser profile did not contain an authenticated session`.
+- The source database contained nine APP-domain rows: one session row and eight
+  unexpired persistent rows.
+- Playwright reported token decryption failures while launching the copied
+  Chrome 150 profile.
+- Treat copied-profile decryption as the current external runtime-compatibility
+  prerequisite. The source profile remains unchanged.
 - Automatic discovery found no joined Group matching the requested keyword and location.
 - The controlled APP one-Group receipt remains open.
 - The controlled ten-Group run must wait for the one-Group gate.
