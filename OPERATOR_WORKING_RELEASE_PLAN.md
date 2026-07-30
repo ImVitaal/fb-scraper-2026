@@ -15,19 +15,18 @@ Phase 4 must close the operator gap before Pages, Events, scheduling, intelligen
 
 ## Current review
 
-| Priority | Finding | Evidence | Product effect |
-|---|---|---|---|
-| P0 | The live parser accepts fixture markers only. | `src/app/parsing/live_group.py` requires `data-pgscan-*` attributes. | Rendered APP HTML reports parser drift. |
-| P0 | Discovery reads a supplied fixture file. | `src/app/discovery/session_fixture.py` reads local bytes after a session check. | Keyword-and-location discovery is not live. |
-| P0 | Operator integration tests replace capture. | `tests/integration/test_operator_toml_lane.py` patches `_capture_selected`. | Tests do not prove the browser-to-export path. |
-| P0 | The CLI captures one rendered page. | `src/app/cli/main.py` calls `capture_group`, then `capture_html`. | Real pagination and comment expansion are bypassed. |
-| P0 | CLI resume also captures one page. | `src/app/cli/main.py` resumes through `capture_html`. | Durable multi-page resume is not connected to Playwright. |
-| P0 | CLI replay always selects fixture replay. | `src/app/cli/main.py` calls `FixtureWorkflow.replay`. | Stored live HTML replay is not operator-accessible. |
-| P1 | Session health checks encryption integrity only. | `src/app/session/profiles.py` does not navigate an authenticated route. | Expired, challenged, and restricted states remain unclassified. |
-| P1 | Live captures are labelled as fixture sessions. | `src/app/workflows/live_capture.py` passes `session_class="fixture"`. | Provenance is incorrect for operator runs. |
-| P1 | Imported sessions require Playwright state JSON. | `src/app/cli/main.py` reads a supplied state file. | Direct supported-browser import remains incomplete. |
-| P1 | Ten-Group collection is fixture-only. | `src/app/workflows/batch_run.py` runs JSON fixtures. | Phase 2 does not prove ten operator-visible Groups. |
-| P2 | Product status text is stale. | `README.md` still names Phase 1 as the current milestone. | Operators can mistake fixture readiness for live readiness. |
+| Milestone | Result | Evidence |
+|---|---|---|
+| 4A | Implemented and locally verified | `90a8a5b` |
+| 4B | Implemented and locally verified | `ec3f3b1` |
+| 4C | Implemented and locally verified | `5c15f56` |
+| 4D–4E | Integrated and locally verified | `8568625`, `98c515a`, `9a6ec4f` |
+| 4F | Local browser gates pass; controlled APP receipt pending | Phase 4 log |
+| 4G | Not started | Requires accepted 4F receipt |
+
+The operator browser is visible by default. `--headless` is an explicit automation option.
+Browser-profile import copies the selected closed profile before launch and preserves its source.
+Each completed operator run writes a stable receipt containing non-private hashes, counts, versions, metrics, and limits.
 
 ## Phase 4 rules
 
@@ -258,7 +257,12 @@ After Phase 4:
 
 ## Immediate next action
 
-Start 4A.
+Complete 4F with one controlled session and target bundle.
 
-Write failing `pgscan doctor` and session-health tests first.
-Then implement the smallest Windows preflight and authenticated-session probe.
+```text
+SESSION_METHOD=guided|browser_profile
+PROFILE_NAME=Default|Profile 2|Profile 3
+TARGET=GROUP_URL|KEYWORD+LOCATION
+```
+
+Close the source browser before profile import. Start 4G only after the 4F receipt passes.

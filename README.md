@@ -225,15 +225,17 @@ Prepare and classify an encrypted session:
 ```powershell
 uv run pgscan session import-browser `
   --profile operator `
-  --browser-profile BROWSER_PROFILE_COPY `
+  --browser-profile BROWSER_USER_DATA_ROOT `
+  --profile-name Default `
   --channel chrome
 uv run pgscan session health `
   --profile operator `
   --probe-url APP_AUTHENTICATED_URL
 ```
 
-Use a copied, closed Chromium profile directory for `BROWSER_PROFILE_COPY`.
-The command exports storage state, encrypts it with DPAPI, and stores no password.
+Close Chromium before import. Use its user-data root for `BROWSER_USER_DATA_ROOT`.
+The command copies the selected profile, exports storage state, encrypts it with DPAPI, and preserves the source.
+Operator capture uses a visible browser by default. Add `--headless` only for automation.
 
 Run live discovery and one selected Group with a strict TOML file:
 
@@ -259,6 +261,7 @@ select = "GROUP_ID_OR_RANK"
 ```powershell
 uv run pgscan run --config operator.toml
 uv run pgscan inspect RUN_ID
+uv run pgscan resume RUN_ID
 uv run pgscan replay RUN_ID --offline
 ```
 
@@ -283,3 +286,6 @@ uv run pgscan compare `
 The repository now includes real local Chromium navigation, live discovery,
 raw-first capture, durable resume, APP extraction, inspection, replay, and exports.
 The controlled APP one-Group and ten-Group receipts remain environment-specific gates.
+
+Each successful operator run writes `RUN_ID.operator-receipt.json` beside its exports.
+The receipt contains non-private hashes, counts, versions, metrics, limits, and session provenance.

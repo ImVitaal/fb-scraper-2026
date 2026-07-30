@@ -21,7 +21,7 @@
 | Phase 4A | `src/app/session/`, `src/app/preflight.py`, unique tests | Preflight and five-state health passed | `90a8a5b` |
 | Phase 4B | `src/app/capture/`, dynamic browser fixtures, unique tests | 9 real-Chromium tests passed | `ec3f3b1` |
 | Phase 4C | parsing, discovery, HTML replay, redacted fixtures | 9 focused tests and scoped gates passed | `5c15f56` |
-| Root | CLI, configuration, targets, live workflow, integration tests | Local vertical, exports, inspection, replay, resume passed | `8568625`, `98c515a` |
+| Root | CLI, configuration, targets, live workflow, integration tests | Local vertical, exports, inspection, replay, resume, receipts passed | `8568625`, `98c515a`, `9a6ec4f` |
 
 Root reviewed each diff and reran focused tests, Ruff, and `ty`.
 
@@ -60,6 +60,9 @@ Root reviewed each diff and reran focused tests, Ruff, and `ty`.
 - Generated CSV, JSON, standalone SQLite, manifest, and Markdown after live success.
 - Added detailed `inspect` output.
 - Fixed deterministic raw metadata during terminal-checkpoint resume.
+- Added stable operator receipts with input, raw-set, normalized, export, metric, version, count, and limit evidence.
+- Made operator browser capture visible by default.
+- Changed browser import to copy one selected closed profile and preserve its source.
 
 ## Verification commands
 
@@ -78,8 +81,8 @@ uv run detect-secrets scan (git ls-files)
 ## Verified results
 
 - Doctor: ready; all nine checks passed.
-- Tests: 133 passed.
-- Coverage: 81.61%.
+- Tests: 140 passed.
+- Coverage: 82.08%.
 - Tracked-file secret findings: 0.
 - Fixture run and replay identifiers match.
 - Fixture normalized SHA-256:
@@ -103,6 +106,14 @@ uv run detect-secrets scan (git ls-files)
   `34c04aff3155acecf8a8bbe946a7430c424b25cfe74392eb9ada0274ee5ead91`.
 - Local Markdown SHA-256:
   `da53f03734c26fb6987712625aa6cf72d80fd692d778aa361a99d91ca71395a2`.
+- Resume receipt SHA-256:
+  `2411147a1ab4287f833a3d8f0b314ec9ac4ea3cbb820a8ee0ab8672df3aa1011`.
+- Resume receipt normalized SHA-256:
+  `d3ef2fcb3a94ec0daea14d6f2096c8230baced96d1a5ab6842405fe0ad4f407c`.
+- Resume receipt raw-set SHA-256:
+  `d31c6bc822ba789bd70927f06ecdefa8d94fc9e9f96b4f2d2ca2fd21a04f8393`.
+- Resume receipt identifier-set SHA-256:
+  `81fee44a4a671d6b8f44d80e0cf143a3e1dd319f27b5440463c5ad7a481d8503`.
 
 ## Gate status
 

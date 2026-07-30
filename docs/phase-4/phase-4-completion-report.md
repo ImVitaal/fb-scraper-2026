@@ -11,6 +11,7 @@
 - `5c15f56` — APP extraction, discovery, and replay.
 - `8568625` — root operator workflow integration.
 - `98c515a` — deterministic resume identity correction.
+- `9a6ec4f` — operator receipts, visible capture defaults, and copied browser-profile import.
 
 ## Acceptance matrix
 
@@ -28,15 +29,16 @@
 | Interruption and resume identifier parity | Pass |
 | Offline replay parity | Pass |
 | CSV, JSON, SQLite, manifest, Markdown | Pass |
+| Stable operator receipt | Pass locally |
 | Unsupported layout false successes | 0 |
 | Identifier precision | 100% on labelled fixtures |
 | Supported required-field accuracy | 100% on labelled fixtures |
 | Pagination completeness | 100% on labelled fixtures |
 | Duplicate canonical records | 0% |
-| Coverage | 81.61% |
+| Tests and coverage | 140 passed; 82.08% |
 | Tracked secret findings | 0 |
 | Controlled APP one-Group | Pending |
-| Controlled APP ten-Group | Blocked by one-Group gate |
+| Controlled APP ten-Group | Waiting for one-Group gate |
 
 ## Working operator commands
 
@@ -45,7 +47,8 @@ uv run pgscan doctor
 
 uv run pgscan session import-browser `
   --profile operator `
-  --browser-profile BROWSER_PROFILE_COPY `
+  --browser-profile BROWSER_USER_DATA_ROOT `
+  --profile-name Default `
   --channel chrome
 
 uv run pgscan session health `
@@ -58,13 +61,16 @@ uv run pgscan resume RUN_ID
 uv run pgscan replay RUN_ID --offline
 ```
 
+Close the source browser before profile import. The importer copies the selected profile and preserves its source.
 Use `uv run pgscan session login --profile operator` for guided login.
+Operator capture opens visibly by default. Use `--headless` only for automation.
 
 ## Current decision
 
 The local operator architecture is connected and verified with real Chromium.
 The default session root contains no ready encrypted APP profile.
 The controlled one-Group gate needs one operator-provided session and target bundle.
+A stable local resume receipt records raw-set, identifier-set, normalized, export, metric, version, count, and limit evidence.
 The ten-Group gate remains closed until that receipt passes.
 
 ## Limits

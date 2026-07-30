@@ -16,6 +16,7 @@
 - Phase 4C integration: `5c15f56`.
 - Phase 4 root integration: `8568625`.
 - Phase 4 resume correction: `98c515a`.
+- Phase 4 operator receipt and browser defaults: `9a6ec4f`.
 - Active milestone: Phase 4F, controlled one-Group validation.
 - Product expansion remains deferred until the operator working-release gate passes.
 
@@ -66,7 +67,9 @@
 - CLI capture and resume use multi-page browser capture.
 - CLI replay routes live runs through integrity-checked stored HTML.
 - Inspect reports pages, interactions, counts, health, failure class, and retries.
-- Live success writes CSV, JSON, standalone SQLite, manifest, and Markdown exports.
+- Live success writes CSV, JSON, standalone SQLite, manifest, Markdown, and a stable operator receipt.
+- Operator capture is visible by default; headless mode requires an explicit option.
+- Browser import copies a selected closed profile and preserves its source.
 - Local real-Chromium imported and guided workflows pass without replacing `_capture_selected`.
 - A real-Chromium interruption resumes with matching identifiers.
 
@@ -79,8 +82,8 @@ uv run ty check
 uv run pytest
 ```
 
-- Final tests: 133 passed.
-- Coverage: 81.61%.
+- Final tests: 140 passed.
+- Coverage: 82.08%.
 - Tracked-file secret scan: zero findings.
 - External fixture run, replay, batch, batch resume, and comparison commands passed.
 
