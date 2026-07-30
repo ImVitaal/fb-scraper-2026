@@ -15,6 +15,12 @@ from tempfile import NamedTemporaryFile
 from typing import TypedDict, cast
 
 from app.session.dpapi import DpapiError, protect_for_current_user, unprotect_for_current_user
+from app.session.health import (
+    SessionHealth,
+    SessionHealthResult,
+    SessionProbe,
+    classify_observation,
+)
 
 
 class SessionEnvelopeError(ValueError):
@@ -93,6 +99,28 @@ class SessionProfileService:
         except SessionEnvelopeError:
             row = self._row(profile_id)
         return self._metadata(row)
+
+    def probe_health(
+        self,
+        profile_id: str,
+        route: str,
+        probe: SessionProbe,
+    ) -> SessionHealthResult:
+        """Probe one authenticated route through either stored session method."""
+        try:
+            observation = probe(route, self.read_state(profile_id))
+            result = classify_observation(observation)
+        except (SessionEnvelopeError, OSError, ValueError):
+            result = SessionHealthResult(SessionHealth.INVALID, ("session_state_invalid",))
+        persisted_health = {
+            SessionHealth.READY: "observed",
+            SessionHealth.EXPIRED: "session_expired",
+            SessionHealth.CHALLENGED: "session_challenged",
+            SessionHealth.RESTRICTED: "session_restricted",
+            SessionHealth.INVALID: "session_invalid",
+        }[result.health]
+        self._set_health(profile_id, persisted_health)
+        return result
 
     def delete(self, profile_id: str) -> None:
         """Delete one encrypted envelope and its non-secret profile metadata."""
