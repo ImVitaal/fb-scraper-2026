@@ -269,6 +269,8 @@ class AppDiscoveryParser:
         location = SessionDiscoveryAdapter._query(location, "location")
         soup = BeautifulSoup(raw_html, "lxml")
         found: dict[str, tuple[str, str, tuple[str, ...], float, float, int | None]] = {}
+        candidate_links_seen = 0
+        join_controls_seen = 0
         for link in soup.select("main a[href*='/groups/']"):
             if not isinstance(link, Tag):
                 continue
@@ -277,6 +279,7 @@ class AppDiscoveryParser:
             match = _GROUP_PATH.fullmatch(parts.path.rstrip("/"))
             if match is None:
                 continue
+            candidate_links_seen += 1
             group_id = match.group(1)
             canonical_url = urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
             name = link.get_text(" ", strip=True)
@@ -289,6 +292,7 @@ class AppDiscoveryParser:
                 or str(button.get("aria-label", "")).casefold().startswith("join group")
                 for button in container.select("button")
             ):
+                join_controls_seen += 1
                 continue
             keyword_score = self._token_score(keyword, visible)
             location_score = self._token_score(location, visible)
@@ -311,6 +315,11 @@ class AppDiscoveryParser:
             if previous is None or len(name) < len(previous[1]):
                 found[group_id] = candidate
         if not found:
+            if candidate_links_seen and join_controls_seen == candidate_links_seen:
+                raise UnsupportedDiscoveryLayoutError(
+                    "no joined Group matches keyword and location; "
+                    "membership preparation is required before collection"
+                )
             raise UnsupportedDiscoveryLayoutError("supported Group candidates are missing")
 
         ordered = sorted(

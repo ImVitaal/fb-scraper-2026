@@ -206,3 +206,35 @@ Results:
 Exact gate result: copied Chrome `Default` profile decryption is the single
 current runtime-compatibility blocker. Do not broaden target discovery.
 
+## Phase 4F session-review corrections
+
+The session review produced three focused product corrections.
+
+1. Live discovery now distinguishes layout failure from no joined matching Group.
+2. Application-bound copied profiles return a specific preparation diagnostic.
+3. Success receipts reconcile visible expected and exported top-level Comments.
+
+Discovery keeps membership changes separate from collection. Results displaying
+Join controls are excluded. A missing joined match reports one explicit
+membership prerequisite before target selection or capture.
+
+Operator receipt schema `1.1` adds:
+
+```json
+{
+  "comment_reconciliation": {
+    "matched": true,
+    "visible_top_level_comments_expected": 1,
+    "visible_top_level_comments_exported": 1
+  }
+}
+```
+
+Focused verification:
+
+```text
+176 passed in 237.50s
+Ruff: passed
+ty: passed
+```
+

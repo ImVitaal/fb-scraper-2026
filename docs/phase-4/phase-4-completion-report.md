@@ -30,6 +30,9 @@
 | Offline replay parity | Pass |
 | CSV, JSON, SQLite, manifest, Markdown | Pass |
 | Stable operator receipt | Pass locally |
+| Visible Comment reconciliation in receipt | Pass locally; schema 1.1 |
+| Joined-Group prerequisite classification | Pass locally |
+| Application-bound copied-profile diagnostic | Pass locally |
 | Unsupported layout false successes | 0 |
 | Identifier precision | 100% on labelled fixtures |
 | Supported required-field accuracy | 100% on labelled fixtures |
@@ -76,6 +79,8 @@ The source contained nine APP-domain rows, including eight unexpired persistent
 rows, and Playwright reported token decryption failures.
 The controlled one-Group gate remains pending on copied-profile decryption
 compatibility.
+A successful receipt now records expected-versus-exported visible top-level
+Comment counts and their equality result.
 A stable local resume receipt records raw-set, identifier-set, normalized, export, metric, version, count, and limit evidence.
 The ten-Group gate remains closed until that receipt passes.
 

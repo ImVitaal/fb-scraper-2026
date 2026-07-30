@@ -84,6 +84,14 @@
 - Operator receipts record pacing, retries, inter-Group waits, skips, and stop reasons.
 - Automatic discovery selects the lowest measured activity among joined results.
 
+### Phase 4F session-review fixes
+
+- Live discovery reports a specific joined-Group membership prerequisite.
+- Search results with Join controls never become collection candidates.
+- Copied profiles with application-bound encryption receive a specific diagnostic.
+- Successful operator receipts reconcile expected and exported visible top-level Comments.
+- Operator receipt schema `1.1` records the Comment reconciliation counts and result.
+
 ## Verification
 
 ```powershell

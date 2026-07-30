@@ -72,6 +72,26 @@ def test_fixture_mode_is_explicit_and_live_layout_failures_return_no_candidates(
         )
 
 
+def test_live_discovery_reports_joined_group_prerequisite() -> None:
+    html = b"""
+    <main role="main"><article>
+      <a href="https://app.invalid/groups/9400001/">Garden Community Bristol</a>
+      <button aria-label="Join Group Garden Community Bristol">Join</button>
+    </article></main>
+    """
+
+    with pytest.raises(
+        UnsupportedDiscoveryLayoutError,
+        match="no joined Group matches keyword and location",
+    ):
+        AppDiscoveryParser().parse(
+            html,
+            keyword="garden",
+            location="Bristol",
+            source_url="https://app.invalid/groups/search/groups/",
+        )
+
+
 def test_discovery_modes_reject_implicit_or_mixed_transports() -> None:
     with pytest.raises(ValueError, match="base_url"):
         SessionDiscoveryAdapter(mode=DiscoveryMode.LIVE)

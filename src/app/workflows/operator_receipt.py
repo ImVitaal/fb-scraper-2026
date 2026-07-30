@@ -82,6 +82,10 @@ class OperatorRunReceiptWriter:
                 """,
                 (live.group_id, live.group_id, live.group_id),
             ).fetchone()
+            post_rows = database.connection.execute(
+                "SELECT payload_json FROM posts WHERE group_id = ?",
+                (live.group_id,),
+            ).fetchall()
             failures = database.connection.execute(
                 """
                 SELECT COUNT(*) AS count
@@ -97,6 +101,10 @@ class OperatorRunReceiptWriter:
             {"byte_count": int(row["byte_count"]), "sha256": str(row["sha256"])} for row in raw_rows
         ]
         identifier_set = sorted(delivery.identifiers)
+        comments_expected = sum(
+            int(json.loads(str(row["payload_json"]))["comments_count"]) for row in post_rows
+        )
+        comments_exported = int(counts["comments"])
         input_payload = {
             "adapter_version": live.adapter_version,
             "canonical_url_sha256": self._text_sha256(live.canonical_url),
@@ -122,8 +130,13 @@ class OperatorRunReceiptWriter:
         }
         payload = {
             "adapter_version": live.adapter_version,
+            "comment_reconciliation": {
+                "matched": comments_expected == comments_exported,
+                "visible_top_level_comments_expected": comments_expected,
+                "visible_top_level_comments_exported": comments_exported,
+            },
             "counts": {
-                "comments": int(counts["comments"]),
+                "comments": comments_exported,
                 "failures": int(failures["count"]),
                 "groups": int(counts["groups"]),
                 "posts": int(counts["posts"]),
@@ -140,7 +153,7 @@ class OperatorRunReceiptWriter:
             "raw_set_sha256": self._json_sha256(raw_captures),
             "run_id": run_id,
             "run_type": "operator_html",
-            "schema_version": "1.0",
+            "schema_version": "1.1",
             "session_class": str(profile["session_class"]),
             "session_health": str(profile["health"]),
             "state": state.value,

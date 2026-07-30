@@ -123,6 +123,11 @@ def test_local_real_browser_runs_capture_and_offline_replay_without_patching_cap
         "groups": 1,
         "posts": 1,
     }
+    assert receipt["comment_reconciliation"] == {
+        "matched": True,
+        "visible_top_level_comments_expected": 1,
+        "visible_top_level_comments_exported": 1,
+    }
     assert receipt["metrics"]["run"] is not None
     assert receipt["metrics"]["replay"] is not None
     assert receipt["metrics"]["resume"] is None

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 from shutil import copy2, copytree
@@ -49,13 +50,7 @@ def collect_imported_browser_profile_state(
     """Export state from a temporary copy of one local Chromium profile."""
     if not user_data_directory.is_dir():
         raise ValueError("browser user-data directory does not exist")
-    if (
-        not profile_name
-        or profile_name in {".", ".."}
-        or "/" in profile_name
-        or "\\" in profile_name
-    ):
-        raise ValueError("browser profile name is invalid")
+    _validate_profile_name(profile_name)
     profile_directory = user_data_directory / profile_name
     local_state = user_data_directory / "Local State"
     if not profile_directory.is_dir() or not local_state.is_file():
@@ -84,6 +79,11 @@ def collect_imported_browser_profile_state(
         raise SessionEnvelopeError("browser profile returned an invalid storage state")
     storage_state = cast(StorageState, state)
     if not storage_state.get("cookies") and not storage_state.get("origins"):
+        if _uses_application_bound_encryption(local_state):
+            raise SessionEnvelopeError(
+                "copied browser profile uses application-bound encryption; "
+                "use the existing visible session login"
+            )
         raise SessionEnvelopeError("browser profile did not contain an authenticated session")
     return storage_state
 
@@ -106,3 +106,25 @@ def _browser_copy_ignore(directory: str, names: list[str]) -> set[str]:
     if Path(directory).name == "Service Worker":
         ignored.update(name for name in names if name in {"CacheStorage", "ScriptCache"})
     return ignored
+
+
+def _uses_application_bound_encryption(local_state: Path) -> bool:
+    """Detect the Windows profile marker without exposing its encrypted value."""
+    try:
+        payload = json.loads(local_state.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    os_crypt = payload.get("os_crypt")
+    return isinstance(os_crypt, dict) and bool(os_crypt.get("app_bound_encrypted_key"))
+
+
+def _validate_profile_name(profile_name: str) -> None:
+    if (
+        not profile_name
+        or profile_name in {".", ".."}
+        or "/" in profile_name
+        or "\\" in profile_name
+    ):
+        raise ValueError("browser profile name is invalid")
