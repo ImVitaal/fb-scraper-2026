@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
-from app.capture import GzipRawCaptureStore, RenderedPage, RenderedPageCapture
+from app.capture import (
+    BrowserStateError,
+    GzipRawCaptureStore,
+    RenderedPage,
+    RenderedPageCapture,
+)
 from app.capture.pagination import PageLimitExceeded, PaginationLoopError
 from app.contracts.models import CommentRecord, GroupRecord, JobState, PostRecord
 from app.metrics import (
@@ -77,6 +82,10 @@ class LiveCaptureWorkflow:
                 max_pages=max_pages,
                 interrupt_after_pages=interrupt_after_pages,
             )
+        except BrowserStateError as error:
+            timer.stop()
+            self._record_browser_failure(job_id, error)
+            raise
         except BaseException:
             timer.stop()
             raise
@@ -265,6 +274,20 @@ class LiveCaptureWorkflow:
         with Database(self.output / "scanner.sqlite3") as database:
             state = JobRepository(database.connection).get_state(job_id)
         return "resume" if state is JobState.INTERRUPTED else "run"
+
+    def _record_browser_failure(self, job_id: str, error: BrowserStateError) -> None:
+        """Persist one redacted terminal browser state."""
+        with Database(self.output / "scanner.sqlite3") as database:
+            database.migrate()
+            jobs = JobRepository(database.connection)
+            self._record_failure(
+                database,
+                jobs,
+                job_id,
+                "browser-stop",
+                error.failure_class,
+                str(error),
+            )
 
     def _timer(self) -> ProcessResourceTimer:
         def snapshot() -> ResourceSnapshot:

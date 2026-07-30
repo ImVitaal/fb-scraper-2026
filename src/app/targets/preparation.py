@@ -27,6 +27,7 @@ class TargetCandidate:
     name: str | None
     source: str
     rank: int
+    activity_posts_per_day: int | None = None
 
     def as_dict(self) -> dict[str, object]:
         return self.__dict__.copy()
@@ -142,6 +143,7 @@ class TargetPreparationService:
                 "discovery",
                 candidate.rank,
                 raw_capture_id=raw_capture_id,
+                activity_posts_per_day=candidate.activity_posts_per_day,
             )
             for candidate in result.candidates
         ]
@@ -245,8 +247,15 @@ class TargetPreparationService:
         rank: int,
         *,
         raw_capture_id: str | None = None,
+        activity_posts_per_day: int | None = None,
     ) -> TargetCandidate:
-        candidate = self._candidate(url, name, source, rank)
+        candidate = self._candidate(
+            url,
+            name,
+            source,
+            rank,
+            activity_posts_per_day=activity_posts_per_day,
+        )
         query_id = self.connection.execute(
             "SELECT query_id FROM discovery_queries WHERE campaign_id = ?", (campaign_id,)
         ).fetchone()[0]
@@ -274,10 +283,25 @@ class TargetPreparationService:
         return candidate
 
     @staticmethod
-    def _candidate(url: str, name: str | None, source: str, rank: int) -> TargetCandidate:
+    def _candidate(
+        url: str,
+        name: str | None,
+        source: str,
+        rank: int,
+        *,
+        activity_posts_per_day: int | None = None,
+    ) -> TargetCandidate:
         canonical_url, group_id = TargetPreparationService._normalize_group_url(url)
         candidate_id = str(uuid4())
-        return TargetCandidate(candidate_id, group_id, canonical_url, name, source, rank)
+        return TargetCandidate(
+            candidate_id,
+            group_id,
+            canonical_url,
+            name,
+            source,
+            rank,
+            activity_posts_per_day,
+        )
 
     @staticmethod
     def _normalize_group_url(url: str) -> tuple[str, str]:

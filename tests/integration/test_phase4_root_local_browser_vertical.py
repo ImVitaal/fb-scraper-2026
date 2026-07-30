@@ -15,7 +15,7 @@ import pytest
 from pytest import MonkeyPatch
 from typer.testing import CliRunner
 
-from app.capture import PlaywrightGroupCaptureAdapter
+from app.capture import BrowserStateError, PlaywrightGroupCaptureAdapter
 from app.cli.main import _capture_selected, app
 from app.session import SessionProfileService
 from app.storage.database import Database
@@ -126,8 +126,21 @@ def test_local_real_browser_runs_capture_and_offline_replay_without_patching_cap
     assert receipt["metrics"]["run"] is not None
     assert receipt["metrics"]["replay"] is not None
     assert receipt["metrics"]["resume"] is None
+    assert receipt["protection"] == {
+        "delays_seconds": {
+            "expansion": 0.0,
+            "navigation": 0.0,
+            "scroll": 0.0,
+        },
+        "known_posts_skipped": 0,
+        "retry_count": 0,
+        "retry_waits_seconds": [],
+        "stop_reason": None,
+    }
     assert "app.invalid" not in receipt_path.read_text(encoding="utf-8")
     assert "local-browser" not in receipt_path.read_text(encoding="utf-8")
+    assert "cookies" not in receipt_path.read_text(encoding="utf-8")
+    assert "origins" not in receipt_path.read_text(encoding="utf-8")
     assert {
         path.name for path in (output / "exports").iterdir() if path.name.startswith(run_id)
     } >= {
@@ -245,6 +258,17 @@ def test_operator_config_uses_real_browser_live_discovery_and_group_capture(
         "group:9100001",
         "post:9200001",
     ]
+    receipt = json.loads(Path(payload["receipt"]).read_text(encoding="utf-8"))
+    protection = receipt["protection"]
+    assert 10 <= protection["delays_seconds"]["navigation"] <= 20
+    assert 6 <= protection["delays_seconds"]["scroll"] <= 12
+    assert 3 <= protection["delays_seconds"]["expansion"] <= 7
+    assert protection["between_groups_seconds"] == 900
+    assert protection["workers"] == 1
+    assert protection["active_groups"] == 1
+    assert protection["first_group_post_limit"] == 30
+    assert protection["retry_count"] == 0
+    assert protection["stop_reason"] is None
     assert len(list(raw_root.glob("*.discovery.html.gz"))) == 1
     assert len([path for path in raw_root.glob("*.html.gz") if ".discovery." not in path.name]) == 1
 
@@ -330,3 +354,62 @@ def test_real_browser_interruption_resumes_from_durable_checkpoint(
     assert receipt["metrics"]["replay"] is not None
     assert len(list(raw_root.glob("*.html.gz"))) == 1
     assert len(receipt["raw_captures"]) == 1
+
+
+def test_account_warning_writes_redacted_stop_receipt(
+    tmp_path: Path,
+    monkeypatch: MonkeyPatch,
+) -> None:
+    output = tmp_path / "output"
+    raw_root = tmp_path / "raw"
+    session_root = tmp_path / "sessions"
+    with Database(output / "scanner.sqlite3") as database:
+        database.migrate()
+        SessionProfileService(database.connection, session_root).import_state(
+            "warning-profile",
+            {"cookies": [], "origins": []},
+        )
+        selected = TargetPreparationService(database.connection).add_url(
+            "https://app.invalid/groups/9100001"
+        )
+
+    failure = (
+        Path(__file__).parents[1] / "fixtures" / "phase4b_browser" / "failure.html"
+    ).resolve()
+
+    class WarningBrowserAdapter(PlaywrightGroupCaptureAdapter):
+        def capture_pages(
+            self,
+            target_url: str,
+            *,
+            lower_bound: datetime | None = None,
+        ):
+            return super().capture_pages(
+                f"{failure.as_uri()}?state=login",
+                lower_bound=lower_bound,
+            )
+
+    monkeypatch.setattr("app.cli.main.PlaywrightGroupCaptureAdapter", WarningBrowserAdapter)
+
+    with pytest.raises(BrowserStateError, match="login_required"):
+        _capture_selected(
+            "warning-profile",
+            selected.campaign_id,
+            output=output,
+            raw_root=raw_root,
+            session_root=session_root,
+            headless=True,
+        )
+
+    receipts = list((output / "exports").glob("*.operator-receipt.json"))
+    assert len(receipts) == 1
+    text = receipts[0].read_text(encoding="utf-8")
+    receipt = json.loads(text)
+    assert receipt["state"] == "failed"
+    assert receipt["counts"]["failures"] == 1
+    assert receipt["protection"]["stop_reason"] == "login_required"
+    assert receipt["raw_captures"] == []
+    assert "app.invalid" not in text
+    assert "warning-profile" not in text
+    assert "cookies" not in text
+    assert "origins" not in text

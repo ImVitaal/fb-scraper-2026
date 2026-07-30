@@ -73,6 +73,17 @@
 - Local real-Chromium imported and guided workflows pass without replacing `_capture_selected`.
 - A real-Chromium interruption resumes with matching identifiers.
 
+### Phase 4F account-protection gate
+
+- One active operator capture is enforced through an exclusive local lock.
+- A successful different-Group capture enforces the 900-second pause.
+- Navigation, scrolling, expansion, and retry delays use protected configurable bounds.
+- Live discovery and Group capture stop on account warnings and HTTP 401, 403, or 429.
+- The first controlled Group has a hard 30-Post normalized and interaction ceiling.
+- Later runs omit known Posts from normalization and record their skip count.
+- Operator receipts record pacing, retries, inter-Group waits, skips, and stop reasons.
+- Automatic discovery selects the lowest measured activity among joined results.
+
 ## Verification
 
 ```powershell
@@ -82,14 +93,16 @@ uv run ty check
 uv run pytest
 ```
 
-- Final tests: 140 passed.
-- Coverage: 82.08%.
+- Final tests: 174 passed.
+- Coverage: 81.58%.
 - Tracked-file secret scan: zero findings.
 - External fixture run, replay, batch, batch resume, and comparison commands passed.
 
 ## Current operator gaps
 
 - A ready encrypted APP session is not present in the default session root.
+- The source Chrome profile is open and its cookie databases are locked.
+- Automatic discovery found no joined Group matching the requested keyword and location.
 - The controlled APP one-Group receipt remains open.
 - The controlled ten-Group run must wait for the one-Group gate.
 

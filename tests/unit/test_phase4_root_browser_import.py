@@ -30,10 +30,18 @@ def test_browser_import_requires_user_data_root_contract(tmp_path: Path) -> None
         collect_imported_browser_profile_state(tmp_path)
 
 
-def test_browser_copy_omits_disposable_caches_only() -> None:
-    names = ["Cache", "Code Cache", "Cookies", "Preferences", "Local Storage"]
+def test_browser_copy_omits_non_session_runtime_content() -> None:
+    names = [
+        "Cache",
+        "Code Cache",
+        "Cookies",
+        "Extensions",
+        "Local Storage",
+        "Preferences",
+        "Sessions",
+    ]
 
     ignored = _browser_copy_ignore("C:/SOURCE/Default", names)
 
-    assert ignored == {"Cache", "Code Cache"}
+    assert ignored == {"Cache", "Code Cache", "Extensions", "Sessions"}
     assert {"Cookies", "Preferences", "Local Storage"}.isdisjoint(ignored)

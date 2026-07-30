@@ -2,7 +2,10 @@
 
 import json
 import os
+import random
+import time
 from collections.abc import Mapping
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -14,10 +17,11 @@ from playwright.sync_api import StorageState as PlaywrightStorageState
 from playwright.sync_api import sync_playwright
 
 from app import __version__
-from app.capture import GzipRawCaptureStore
+from app.capture import BrowserCaptureLimits, BrowserStateError, GzipRawCaptureStore
 from app.capture.playwright_adapter import PlaywrightGroupCaptureAdapter
 from app.configuration import (
     FixtureRunConfiguration,
+    OperatorProtectionConfiguration,
     OperatorRunConfiguration,
     OperatorSessionConfiguration,
     OperatorTargetConfiguration,
@@ -138,6 +142,7 @@ def run(
 
 def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
     """Prepare one session and target, then run the existing capture workflow."""
+    discovery_protection: dict[str, object] = {}
     with Database(configuration.output / "scanner.sqlite3") as database:
         database.migrate()
         sessions = SessionProfileService(database.connection, configuration.session_root)
@@ -151,13 +156,27 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
         if health.health.value != "ready":
             raise ValueError(f"session health is {health.health.value}")
         targets = TargetPreparationService(database.connection)
-        selected = _prepare_target(
-            targets,
-            state,
-            configuration.target,
-            raw_root=configuration.raw_root,
-            raw_captures=RawCaptureMetadataRepository(database.connection),
-        )
+        try:
+            selected = _prepare_target(
+                targets,
+                state,
+                configuration.target,
+                raw_root=configuration.raw_root,
+                raw_captures=RawCaptureMetadataRepository(database.connection),
+                protection=configuration.protection,
+                protection_sink=discovery_protection,
+            )
+        except BrowserStateError as error:
+            receipt = OperatorRunReceiptWriter(configuration.output).write_discovery_stop(
+                str(uuid4()),
+                profile=configuration.session.profile,
+                protection=discovery_protection,
+                stop_reason=error.failure_class,
+            )
+            raise BrowserStateError(
+                error.failure_class,
+                f"operator discovery stopped; receipt={receipt.path}",
+            ) from error
     return _capture_selected(
         configuration.session.profile,
         selected.campaign_id,
@@ -165,6 +184,8 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
         raw_root=configuration.raw_root,
         session_root=configuration.session_root,
         headless=configuration.headless,
+        protection=configuration.protection,
+        discovery_protection=discovery_protection,
     )
 
 
@@ -197,6 +218,8 @@ def _prepare_target(
     *,
     raw_root: Path,
     raw_captures: RawCaptureMetadataRepository,
+    protection: OperatorProtectionConfiguration | None = None,
+    protection_sink: dict[str, object] | None = None,
 ):
     """Prepare and select exactly one configured Group."""
     if configuration.method == "url":
@@ -225,14 +248,28 @@ def _prepare_target(
                 context = browser.new_context(storage_state=configuration_state(state))
                 try:
                     page = context.new_page()
-                    captured = SessionDiscoveryAdapter(
+                    discovery_adapter = SessionDiscoveryAdapter(
                         mode=DiscoveryMode.LIVE,
                         base_url=configuration.base_url,
-                    ).capture(
-                        keyword=configuration.keyword,
-                        location=configuration.location,
-                        page=cast(DiscoveryPage, page),
+                        navigation_delay_seconds=(
+                            random.uniform(*protection.navigation_delay_seconds)
+                            if protection is not None
+                            else 0.0
+                        ),
+                        retry_delays_seconds=(
+                            protection.retry_delays_seconds if protection is not None else ()
+                        ),
+                        max_retries=2 if protection is not None else 0,
                     )
+                    try:
+                        captured = discovery_adapter.capture(
+                            keyword=configuration.keyword,
+                            location=configuration.location,
+                            page=cast(DiscoveryPage, page),
+                        )
+                    finally:
+                        if protection_sink is not None:
+                            protection_sink.update(discovery_adapter.protection_telemetry)
                 finally:
                     context.close()
             finally:
@@ -269,6 +306,20 @@ def configuration_state(state: Mapping[str, object]) -> PlaywrightStorageState:
 
 
 def _resolve_candidate(candidates, selector: str) -> str:
+    if selector == "lowest-volume":
+        measured = [
+            candidate for candidate in candidates if candidate.activity_posts_per_day is not None
+        ]
+        if not measured:
+            raise ValueError("automatic selection requires visible posts-per-day activity")
+        return min(
+            measured,
+            key=lambda candidate: (
+                candidate.activity_posts_per_day,
+                candidate.rank,
+                candidate.group_id,
+            ),
+        ).candidate_id
     matches = [
         candidate
         for candidate in candidates
@@ -347,6 +398,96 @@ def _guided_operator_configuration(
     )
 
 
+def _protection_limits(
+    protection: OperatorProtectionConfiguration,
+) -> BrowserCaptureLimits:
+    """Select one bounded delay from each configured release range."""
+    return BrowserCaptureLimits(
+        max_seconds=3600.0,
+        max_retries=2,
+        navigation_delay_seconds=random.uniform(*protection.navigation_delay_seconds),
+        scroll_delay_seconds=random.uniform(*protection.scroll_delay_seconds),
+        expansion_delay_seconds=random.uniform(*protection.expansion_delay_seconds),
+        retry_delays_seconds=protection.retry_delays_seconds,
+        max_recent_posts=protection.first_group_post_limit,
+    )
+
+
+def _protection_receipt(
+    adapter: PlaywrightGroupCaptureAdapter,
+    protection: OperatorProtectionConfiguration | None,
+    *,
+    between_group_wait_seconds: float = 0.0,
+    discovery_protection: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Combine runtime telemetry with non-private operator limits."""
+    payload = adapter.protection_telemetry
+    if protection is None:
+        return payload
+    return payload | {
+        "active_groups": protection.active_groups,
+        "between_group_wait_applied_seconds": between_group_wait_seconds,
+        "between_groups_seconds": protection.between_groups_seconds,
+        "discovery": dict(discovery_protection or {}),
+        "first_group_post_limit": protection.first_group_post_limit,
+        "workers": protection.workers,
+    }
+
+
+@contextmanager
+def _operator_capture_gate(
+    output: Path,
+    group_id: str,
+    protection: OperatorProtectionConfiguration | None,
+):
+    """Enforce one operator capture and the configured inter-Group pause."""
+    if protection is None:
+        yield 0.0
+        return
+    output.mkdir(parents=True, exist_ok=True)
+    lock_path = output / ".operator-capture.lock"
+    try:
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError as error:
+        raise RuntimeError("another operator Group capture is active") from error
+    try:
+        os.write(descriptor, str(os.getpid()).encode("ascii"))
+        os.close(descriptor)
+        waited = _wait_between_groups(output, group_id, protection.between_groups_seconds)
+        yield waited
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+        lock_path.unlink(missing_ok=True)
+
+
+def _wait_between_groups(output: Path, group_id: str, minimum_seconds: float) -> float:
+    """Wait after the latest successful capture of a different Group."""
+    database_path = output / "scanner.sqlite3"
+    if not database_path.exists():
+        return 0.0
+    with Database(database_path) as database:
+        database.migrate()
+        row = database.connection.execute(
+            """
+            SELECT jobs.updated_at
+            FROM jobs
+            JOIN live_runs ON live_runs.job_id = jobs.job_id
+            WHERE jobs.state = 'succeeded' AND live_runs.group_id <> ?
+            ORDER BY jobs.updated_at DESC
+            LIMIT 1
+            """,
+            (group_id,),
+        ).fetchone()
+    if row is None:
+        return 0.0
+    elapsed = (datetime.now(UTC) - datetime.fromisoformat(str(row["updated_at"]))).total_seconds()
+    remaining = max(0.0, minimum_seconds - elapsed)
+    if remaining:
+        time.sleep(remaining)
+    return remaining
+
+
 def _capture_selected(
     profile: str,
     campaign: str,
@@ -355,14 +496,61 @@ def _capture_selected(
     raw_root: Path,
     session_root: Path,
     headless: bool = False,
+    protection: OperatorProtectionConfiguration | None = None,
+    discovery_protection: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Capture the selected Group through its encrypted browser session."""
     job_id = str(uuid4())
     with Database(output / "scanner.sqlite3") as database:
         database.migrate()
+        selected = TargetPreparationService(database.connection).get_selected(campaign)
+    with _operator_capture_gate(output, selected.group_id, protection) as between_group_wait:
+        return _capture_selected_locked(
+            job_id,
+            profile,
+            campaign,
+            output=output,
+            raw_root=raw_root,
+            session_root=session_root,
+            headless=headless,
+            protection=protection,
+            between_group_wait=between_group_wait,
+            discovery_protection=discovery_protection,
+        )
+
+
+def _capture_selected_locked(
+    job_id: str,
+    profile: str,
+    campaign: str,
+    *,
+    output: Path,
+    raw_root: Path,
+    session_root: Path,
+    headless: bool,
+    protection: OperatorProtectionConfiguration | None,
+    between_group_wait: float,
+    discovery_protection: Mapping[str, object] | None,
+) -> dict[str, object]:
+    """Run one selected capture while the exclusive operator gate is held."""
+    with Database(output / "scanner.sqlite3") as database:
+        database.migrate()
         sessions = SessionProfileService(database.connection, session_root)
         state = sessions.read_state(profile)
         selected = TargetPreparationService(database.connection).get_selected(campaign)
+        known_post_ids = {
+            str(row["post_id"])
+            for row in database.connection.execute(
+                """
+                SELECT DISTINCT post.post_id
+                FROM posts AS post
+                JOIN pagination_checkpoints AS checkpoint
+                  ON checkpoint.raw_capture_id = post.raw_capture_id
+                WHERE post.group_id = ?
+                """,
+                (selected.group_id,),
+            )
+        }
         JobRepository(database.connection).create(job_id)
         LiveRunRepository(database.connection).create(
             job_id,
@@ -371,18 +559,51 @@ def _capture_selected(
             datetime.now(UTC) - timedelta(days=30),
             "app_rendered_html/1.0",
         )
-    adapter = PlaywrightGroupCaptureAdapter(state, headless=headless)
-    with adapter.capture_pages(
-        selected.canonical_url,
-        lower_bound=datetime.now(UTC) - timedelta(days=30),
-    ) as capture_page:
-        result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+    limits = _protection_limits(protection) if protection is not None else None
+    adapter = PlaywrightGroupCaptureAdapter(
+        state,
+        headless=headless,
+        limits=limits,
+        known_post_ids=known_post_ids,
+    )
+    try:
+        with adapter.capture_pages(
+            selected.canonical_url,
+            lower_bound=datetime.now(UTC) - timedelta(days=30),
+        ) as capture_page:
+            result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+                job_id,
+                capture_page,
+                max_pages=adapter.limits.max_pages,
+            )
+    except BrowserStateError as error:
+        receipt = OperatorRunReceiptWriter(output).write_stop(
             job_id,
-            capture_page,
-            max_pages=adapter.limits.max_pages,
+            adapter.limits,
+            protection=_protection_receipt(
+                adapter,
+                protection,
+                between_group_wait_seconds=between_group_wait,
+                discovery_protection=discovery_protection,
+            ),
+            stop_reason=error.failure_class,
         )
+        raise BrowserStateError(
+            error.failure_class,
+            f"operator stopped; receipt={receipt.path}",
+        ) from error
     delivery = StoredHtmlReplayWorkflow(output, raw_root).replay(job_id, offline=True)
-    receipt = OperatorRunReceiptWriter(output).write(job_id, delivery, adapter.limits)
+    receipt = OperatorRunReceiptWriter(output).write(
+        job_id,
+        delivery,
+        adapter.limits,
+        protection=_protection_receipt(
+            adapter,
+            protection,
+            between_group_wait_seconds=between_group_wait,
+            discovery_protection=discovery_protection,
+        ),
+    )
     return {
         "identifiers": list(result.identifiers),
         "job_id": result.job_id,
@@ -411,6 +632,7 @@ def capture(
             raw_root=raw_root,
             session_root=session_root,
             headless=headless,
+            protection=OperatorProtectionConfiguration(),
         )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
@@ -510,17 +732,39 @@ def resume(
             storage_state = SessionProfileService(database.connection, session_root).read_state(
                 live.profile_id
             )
-        adapter = PlaywrightGroupCaptureAdapter(storage_state, headless=headless)
-        with adapter.capture_pages(
-            live.canonical_url, lower_bound=live.lower_bound
-        ) as capture_page:
-            result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+        protection = OperatorProtectionConfiguration()
+        adapter = PlaywrightGroupCaptureAdapter(
+            storage_state,
+            headless=headless,
+            limits=_protection_limits(protection),
+        )
+        try:
+            with adapter.capture_pages(
+                live.canonical_url, lower_bound=live.lower_bound
+            ) as capture_page:
+                result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+                    run_id,
+                    capture_page,
+                    max_pages=adapter.limits.max_pages,
+                )
+        except BrowserStateError as error:
+            receipt = OperatorRunReceiptWriter(output).write_stop(
                 run_id,
-                capture_page,
-                max_pages=adapter.limits.max_pages,
+                adapter.limits,
+                protection=_protection_receipt(adapter, protection),
+                stop_reason=error.failure_class,
             )
+            raise BrowserStateError(
+                error.failure_class,
+                f"operator stopped; receipt={receipt.path}",
+            ) from error
         delivery = StoredHtmlReplayWorkflow(output, raw_root).replay(run_id, offline=True)
-        receipt = OperatorRunReceiptWriter(output).write(run_id, delivery, adapter.limits)
+        receipt = OperatorRunReceiptWriter(output).write(
+            run_id,
+            delivery,
+            adapter.limits,
+            protection=_protection_receipt(adapter, protection),
+        )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error

@@ -121,8 +121,30 @@ uv run detect-secrets scan (git ls-files)
 - Imported local workflow: passed.
 - Guided local workflow: passed.
 - Real-browser interruption and resume: passed.
+- Phase 4F account-protection implementation: passed.
 - Controlled APP one-Group: pending.
 - Controlled APP ten-Group: not started because the one-Group gate is pending.
+
+## Phase 4F protection checkpoint — 2026-07-30
+
+- Enforced one active operator capture through an exclusive output-root lock.
+- Enforced the 900-second pause after a successful different-Group capture.
+- Added configurable navigation, scrolling, expansion, and retry delays.
+- Added immediate stops for login, checkpoint, CAPTCHA, lock, restriction, 401, 403, and 429.
+- Applied the same navigation, retry, and stop controls during live discovery.
+- Limited the first controlled Group to 30 normalized Posts and bounded expansion actions.
+- Pruned known Posts from later normalized captures and recorded skip counts.
+- Added redacted success, capture-stop, and discovery-stop protection telemetry.
+- Added automatic lowest-measured-volume selection for joined discovery results.
+- Browser-profile copying excludes volatile extension and session directories while preserving its source.
+- Ruff formatting, Ruff lint, and `ty` passed.
+- Full suite: 174 passed with 81.58% coverage.
+- Repository secret scan: zero findings.
+- Doctor passed all nine checks.
+- In-app discovery returned no joined Group matching `local community` and `London`.
+- The source Chrome profile reopened and locked its cookie databases before import.
+- No controlled Group collection occurred.
+- Phase 4G remains gated.
 
 ## Remaining external input
 

@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, cast
 
+from bs4 import BeautifulSoup
 from playwright.sync_api import (
     Browser,
     BrowserContext,
@@ -48,6 +49,11 @@ class BrowserCaptureLimits:
     max_storage_bytes: int = 100 * 1024 * 1024
     navigation_timeout_ms: int = 30_000
     ready_timeout_ms: int = 3_000
+    navigation_delay_seconds: float = 0.0
+    scroll_delay_seconds: float = 0.0
+    expansion_delay_seconds: float = 0.0
+    retry_delays_seconds: tuple[float, ...] = ()
+    max_recent_posts: int = 30
 
     def __post_init__(self) -> None:
         positive = {
@@ -57,12 +63,23 @@ class BrowserCaptureLimits:
             "max_storage_bytes": self.max_storage_bytes,
             "navigation_timeout_ms": self.navigation_timeout_ms,
             "ready_timeout_ms": self.ready_timeout_ms,
+            "max_recent_posts": self.max_recent_posts,
         }
         for name, value in positive.items():
             if value <= 0:
                 raise ValueError(f"{name} must be greater than zero")
         if self.max_retries < 0:
             raise ValueError("max_retries must be zero or greater")
+        delays = {
+            "navigation_delay_seconds": self.navigation_delay_seconds,
+            "scroll_delay_seconds": self.scroll_delay_seconds,
+            "expansion_delay_seconds": self.expansion_delay_seconds,
+        }
+        for name, value in delays.items():
+            if value < 0:
+                raise ValueError(f"{name} must be zero or greater")
+        if any(value < 0 for value in self.retry_delays_seconds):
+            raise ValueError("retry_delays_seconds values must be zero or greater")
 
 
 class BrowserStateError(RuntimeError):
@@ -130,6 +147,7 @@ class _BrowserRenderedPageCapture:
         self._storage_bytes = 0
         self._completed: list[str] = []
         self._pending: _Action | None = None
+        self._stop_failure: BrowserStateError | None = None
 
     def __call__(self, checkpoint: str | None) -> RenderedPage:
         """Return rendered bytes and the opaque checkpoint for the next action."""
@@ -141,7 +159,7 @@ class _BrowserRenderedPageCapture:
             self._perform_checkpointed_action(checkpoint)
         assert self._page is not None
         self._wait_for_supported_state()
-        raw_html = self._page.content().encode("utf-8")
+        raw_html = self._bounded_html(self._page.content())
         self._page_count += 1
         self._storage_bytes += len(raw_html)
         if self._storage_bytes > self._adapter.limits.max_storage_bytes:
@@ -161,6 +179,7 @@ class _BrowserRenderedPageCapture:
             return
         self._page = self._adapter._new_page()
         page = self._page
+        page.on("response", self._on_response)
         self._retry(
             lambda: page.goto(
                 self._target_url,
@@ -170,6 +189,7 @@ class _BrowserRenderedPageCapture:
             "navigation_failed",
         )
         self._wait_for_supported_state()
+        self._wait_for_pacing(self._adapter.limits.navigation_delay_seconds)
         if checkpoint is None:
             return
 
@@ -210,6 +230,7 @@ class _BrowserRenderedPageCapture:
 
     def _execute(self, action: _Action, *, replay: bool) -> None:
         self._ensure_time()
+        self._raise_if_stop_requested()
         if self._interaction_count >= self._adapter.limits.max_interactions:
             raise CaptureBoundExceeded(
                 "interaction_limit",
@@ -221,7 +242,7 @@ class _BrowserRenderedPageCapture:
         def operation() -> None:
             if action.kind == "scroll":
                 page.evaluate("() => window.scrollBy(0, Math.max(window.innerHeight * 0.9, 600))")
-                page.wait_for_timeout(100)
+                self._wait_for_pacing(self._adapter.limits.scroll_delay_seconds)
                 return
             locator = (
                 page.locator(action.selector)
@@ -229,9 +250,10 @@ class _BrowserRenderedPageCapture:
                 else page.get_by_role("button", name=action.text, exact=True).first
             )
             locator.click(timeout=self._adapter.limits.navigation_timeout_ms)
-            page.wait_for_timeout(50)
+            self._wait_for_pacing(self._adapter.limits.expansion_delay_seconds)
 
         self._retry(operation, "interaction_failed")
+        self._raise_if_stop_requested()
         self._interaction_count += 1
         self._ensure_time()
         if not replay:
@@ -239,6 +261,7 @@ class _BrowserRenderedPageCapture:
 
     def _derive_next_action(self) -> _Action | None:
         assert self._page is not None
+        permitted_post_ids = self._permitted_post_ids()
         for attribute, kind in (
             ("data-pgscan-expand-post", "expand_post"),
             ("data-pgscan-expand-comments", "expand_comments"),
@@ -249,6 +272,11 @@ class _BrowserRenderedPageCapture:
                 if not candidate.is_visible():
                     continue
                 value = candidate.get_attribute(attribute) or str(index)
+                if value in self._adapter.known_post_ids:
+                    self._adapter._record_known_post_skip(value)
+                    continue
+                if permitted_post_ids and value not in permitted_post_ids:
+                    continue
                 selector = f"[{attribute}={json.dumps(value)}]"
                 return _Action(kind, f"{kind}:{value}", selector=selector)
 
@@ -259,6 +287,12 @@ class _BrowserRenderedPageCapture:
                 continue
             label = " ".join(candidate.inner_text().split())
             if not label or _REPLY.search(label):
+                continue
+            post_id = self._post_id_for_button(candidate)
+            if post_id is not None and post_id in self._adapter.known_post_ids:
+                self._adapter._record_known_post_skip(post_id)
+                continue
+            if post_id is not None and permitted_post_ids and post_id not in permitted_post_ids:
                 continue
             kind: str | None = None
             if _POST_EXPANSION.search(label):
@@ -274,8 +308,83 @@ class _BrowserRenderedPageCapture:
         scroll_number = sum(key.startswith("scroll:") for key in self._completed) + 1
         return _Action("scroll", f"scroll:{scroll_number}")
 
+    def _permitted_post_ids(self) -> frozenset[str]:
+        """Return the first bounded Post identifiers in current DOM order."""
+        assert self._page is not None
+        post_ids: list[str] = []
+        anchors = self._page.locator("[data-pgscan-post-id], article a[href*='/posts/']")
+        for index in range(anchors.count()):
+            item = anchors.nth(index)
+            explicit = item.get_attribute("data-pgscan-post-id")
+            href = item.get_attribute("href") or ""
+            match = re.search(r"/posts/([^/?#]+)", href)
+            post_id = explicit or (match.group(1) if match else None)
+            if post_id is not None and post_id not in post_ids:
+                post_ids.append(post_id)
+            if len(post_ids) >= self._adapter.limits.max_recent_posts:
+                break
+        return frozenset(post_ids)
+
+    def _bounded_html(self, raw_html: str) -> bytes:
+        """Exclude known and over-limit Posts from the normalized snapshot."""
+        soup = BeautifulSoup(raw_html, "lxml")
+        seen = 0
+        posts = list(soup.select("article"))
+        posts.extend(
+            post
+            for post in soup.select("[data-pgscan-post-id]")
+            if post.name != "article" and post.find_parent("article") is None
+        )
+        for post in posts:
+            post_id = post.get("data-pgscan-post-id")
+            if not post_id:
+                link = post.select_one("a[href*='/posts/']")
+                href = str(link.get("href", "")) if link is not None else ""
+                match = re.search(r"/posts/([^/?#]+)", href)
+                post_id = match.group(1) if match else None
+            if post_id is None:
+                continue
+            if post_id in self._adapter.known_post_ids:
+                self._adapter._record_known_post_skip(str(post_id))
+                post.decompose()
+                continue
+            seen += 1
+            if seen > self._adapter.limits.max_recent_posts:
+                post.decompose()
+        return str(soup).encode("utf-8")
+
+    @staticmethod
+    def _post_id_for_button(candidate: Any) -> str | None:
+        value = candidate.evaluate(
+            """element => {
+                const article = element.closest("article");
+                if (!article) return null;
+                const explicit = article.getAttribute("data-pgscan-post-id");
+                if (explicit) return explicit;
+                const link = article.querySelector("a[href*='/posts/']");
+                if (!link) return null;
+                const match = link.getAttribute("href").match(/\\/posts\\/([^/?#]+)/);
+                return match ? match[1] : null;
+            }"""
+        )
+        return value if isinstance(value, str) and value else None
+
     def _history_boundary_reached(self) -> bool:
         assert self._page is not None
+        post_ids: set[str] = set()
+        anchors = self._page.locator("[data-pgscan-post-id], article a[href*='/posts/']")
+        for index in range(anchors.count()):
+            item = anchors.nth(index)
+            explicit = item.get_attribute("data-pgscan-post-id")
+            if explicit:
+                post_ids.add(explicit)
+                continue
+            href = item.get_attribute("href") or ""
+            match = re.search(r"/posts/([^/?#]+)", href)
+            if match:
+                post_ids.add(match.group(1))
+        if len(post_ids) >= self._adapter.limits.max_recent_posts:
+            return True
         if self._page.locator(
             "[data-pgscan-history-boundary='reached'], [data-pgscan-content-end='true']"
         ).count():
@@ -301,6 +410,7 @@ class _BrowserRenderedPageCapture:
         assert self._page is not None
         deadline = time.perf_counter() + self._adapter.limits.ready_timeout_ms / 1000
         while True:
+            self._raise_if_stop_requested()
             failure = self._classify_failure()
             if failure is not None:
                 raise failure
@@ -322,32 +432,37 @@ class _BrowserRenderedPageCapture:
             (
                 "login_required",
                 "[data-pgscan-login-required], form input[type='password']",
-                "/login",
+                ("/login",),
                 ("log in", "login"),
             ),
             (
                 "challenge",
                 "[data-pgscan-challenge]",
-                "/challenge",
-                ("security check", "confirm your identity"),
+                ("/challenge", "/checkpoint", "/captcha"),
+                ("security check", "confirm your identity", "captcha", "checkpoint"),
             ),
             (
                 "restricted",
                 "[data-pgscan-restricted]",
-                "/restricted",
-                ("account temporarily restricted",),
+                ("/restricted", "/locked"),
+                (
+                    "account temporarily restricted",
+                    "account restricted",
+                    "account locked",
+                    "temporarily blocked",
+                ),
             ),
             (
                 "group_unavailable",
                 "[data-pgscan-group-unavailable]",
-                "/unavailable",
+                ("/unavailable",),
                 ("this content is not available", "group is unavailable"),
             ),
         )
-        for failure_class, selector, url_part, text_parts in conditions:
+        for failure_class, selector, url_parts, text_parts in conditions:
             if (
                 self._page.locator(selector).count()
-                or url_part in url
+                or any(part in url for part in url_parts)
                 or any(part in body for part in text_parts)
             ):
                 return BrowserStateError(failure_class, "browser reported a non-success state")
@@ -365,16 +480,61 @@ class _BrowserRenderedPageCapture:
         errors: list[PlaywrightError] = []
         for attempt in range(self._adapter.limits.max_retries + 1):
             self._ensure_time()
+            self._raise_if_stop_requested()
             try:
-                return operation()
+                result = operation()
+                self._raise_if_stop_requested()
+                return result
             except (PlaywrightTimeoutError, PlaywrightError) as error:
                 errors.append(error)
+                self._raise_if_stop_requested()
                 if attempt >= self._adapter.limits.max_retries:
                     break
+                delay = self._retry_delay(attempt)
+                self._wait_for_pacing(delay)
+                self._adapter._record_retry(delay)
         raise BrowserStateError(
             failure_class,
             f"Playwright operation failed after {len(errors)} attempt(s)",
         ) from errors[-1]
+
+    def _retry_delay(self, attempt: int) -> float:
+        delays = self._adapter.limits.retry_delays_seconds
+        if not delays:
+            return 0.0
+        return delays[min(attempt, len(delays) - 1)]
+
+    def _wait_for_pacing(self, seconds: float) -> None:
+        self._ensure_time()
+        self._raise_if_stop_requested()
+        if seconds <= 0:
+            return
+        assert self._page is not None
+        remaining = self._adapter.limits.max_seconds - (time.perf_counter() - self._started_at)
+        if remaining <= 0:
+            raise CaptureBoundExceeded("time_limit", self._adapter.limits.max_seconds)
+        if remaining < seconds:
+            raise CaptureBoundExceeded("time_limit", self._adapter.limits.max_seconds)
+        self._page.wait_for_timeout(seconds * 1000)
+        self._ensure_time()
+        self._raise_if_stop_requested()
+
+    def _on_response(self, response: Any) -> None:
+        status = getattr(response, "status", None)
+        if status in {401, 403, 429} and self._stop_failure is None:
+            self._stop_failure = BrowserStateError(
+                f"http_{status}",
+                f"browser response returned HTTP {status}",
+            )
+            self._adapter._record_stop(f"http_{status}")
+
+    def _raise_if_stop_requested(self) -> None:
+        if self._stop_failure is not None:
+            raise self._stop_failure
+        failure = self._classify_failure() if self._page is not None else None
+        if failure is not None:
+            self._adapter._record_stop(failure.failure_class)
+            raise failure
 
     def _ensure_time(self) -> None:
         if time.perf_counter() - self._started_at > self._adapter.limits.max_seconds:
@@ -427,11 +587,17 @@ class PlaywrightGroupCaptureAdapter:
         *,
         limits: BrowserCaptureLimits | None = None,
         headless: bool = True,
+        known_post_ids: set[str] | None = None,
     ) -> None:
         self.storage_state = dict(storage_state)
         self.limits = limits or BrowserCaptureLimits()
         self.headless = headless
+        self.known_post_ids = frozenset(known_post_ids or ())
         self.closed = True
+        self._retry_count = 0
+        self._retry_waits: list[float] = []
+        self._stop_reason: str | None = None
+        self._known_post_skips: set[str] = set()
         self._playwright: Playwright | None = None
         self._browser: Browser | None = None
         self._context: BrowserContext | None = None
@@ -470,6 +636,32 @@ class PlaywrightGroupCaptureAdapter:
         if self._context is None:
             raise RuntimeError("browser capture lifecycle is not open")
         return self._context.new_page()
+
+    @property
+    def protection_telemetry(self) -> dict[str, object]:
+        """Return stable non-private pacing, retry, stop, and skip evidence."""
+        return {
+            "delays_seconds": {
+                "expansion": self.limits.expansion_delay_seconds,
+                "navigation": self.limits.navigation_delay_seconds,
+                "scroll": self.limits.scroll_delay_seconds,
+            },
+            "known_posts_skipped": len(self._known_post_skips),
+            "retry_count": self._retry_count,
+            "retry_waits_seconds": list(self._retry_waits),
+            "stop_reason": self._stop_reason,
+        }
+
+    def _record_retry(self, delay: float) -> None:
+        self._retry_count += 1
+        self._retry_waits.append(delay)
+
+    def _record_stop(self, reason: str) -> None:
+        if self._stop_reason is None:
+            self._stop_reason = reason
+
+    def _record_known_post_skip(self, post_id: str) -> None:
+        self._known_post_skips.add(post_id)
 
     def _close(self) -> None:
         try:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 
 class ConfigurationError(ValueError):
@@ -77,6 +77,20 @@ class OperatorTargetConfiguration:
 
 
 @dataclass(frozen=True)
+class OperatorProtectionConfiguration:
+    """Mandatory low-volume limits for one protected operator run."""
+
+    navigation_delay_seconds: tuple[float, float] = (10.0, 20.0)
+    scroll_delay_seconds: tuple[float, float] = (6.0, 12.0)
+    expansion_delay_seconds: tuple[float, float] = (3.0, 7.0)
+    retry_delays_seconds: tuple[float, float] = (30.0, 120.0)
+    between_groups_seconds: float = 900.0
+    workers: int = 1
+    active_groups: int = 1
+    first_group_post_limit: int = 30
+
+
+@dataclass(frozen=True)
 class OperatorRunConfiguration:
     """Repeatable connected session, target-selection, and capture workflow."""
 
@@ -86,14 +100,21 @@ class OperatorRunConfiguration:
     session: OperatorSessionConfiguration
     target: OperatorTargetConfiguration
     headless: bool = False
+    protection: OperatorProtectionConfiguration = OperatorProtectionConfiguration()
 
     @classmethod
     def load(cls, path: Path) -> OperatorRunConfiguration:
         """Load one strict operator workflow configuration."""
         payload = _load_toml(path)
-        if set(payload) != {"run", "session", "target"}:
+        if not {"run", "session", "target"}.issubset(payload) or set(payload) - {
+            "run",
+            "session",
+            "target",
+            "protection",
+        }:
             raise ConfigurationError(
-                "operator configuration must contain [run], [session], and [target]"
+                "operator configuration must contain [run], [session], and [target]; "
+                "[protection] is optional"
             )
         run = _table(payload, "run")
         required_run = {"mode", "output", "raw_root", "session_root"}
@@ -113,6 +134,7 @@ class OperatorRunConfiguration:
             session=cls._session(_table(payload, "session"), path.parent),
             target=cls._target(_table(payload, "target"), path.parent),
             headless=headless,
+            protection=cls._protection(payload.get("protection")),
         )
 
     @staticmethod
@@ -150,7 +172,7 @@ class OperatorRunConfiguration:
         method = values.get("method")
         expected = {
             "discovery": {"method", "fixture", "keyword", "location", "select"},
-            "live_discovery": {"method", "base_url", "keyword", "location", "select"},
+            "live_discovery": {"method", "base_url", "keyword", "location"},
             "url": {"method", "url"},
             "csv": {"method", "csv_file", "select"},
         }
@@ -158,7 +180,8 @@ class OperatorRunConfiguration:
             raise ConfigurationError(
                 "[target].method must be discovery, live_discovery, url, or csv"
             )
-        if set(values) != expected[method]:
+        allowed = expected[method] | ({"select"} if method == "live_discovery" else set())
+        if set(values) - allowed or not expected[method].issubset(values):
             raise ConfigurationError(f"[target] has invalid fields for {method}")
         if method == "discovery":
             return OperatorTargetConfiguration(
@@ -171,7 +194,9 @@ class OperatorRunConfiguration:
         if method == "live_discovery":
             return OperatorTargetConfiguration(
                 method="live_discovery",
-                select=_text(values, "select", "target"),
+                select=(
+                    _text(values, "select", "target") if "select" in values else "lowest-volume"
+                ),
                 base_url=_text(values, "base_url", "target").rstrip("/"),
                 keyword=_text(values, "keyword", "target"),
                 location=_text(values, "location", "target"),
@@ -185,6 +210,52 @@ class OperatorRunConfiguration:
             method="csv",
             select=_text(values, "select", "target"),
             csv_file=_path(values, "csv_file", parent, "target"),
+        )
+
+    @staticmethod
+    def _protection(value: object) -> OperatorProtectionConfiguration:
+        if value is None:
+            return OperatorProtectionConfiguration()
+        if not isinstance(value, dict):
+            raise ConfigurationError("[protection] must be a table")
+        values = cast(dict[str, Any], value)
+        expected = {
+            "navigation_delay_seconds",
+            "scroll_delay_seconds",
+            "expansion_delay_seconds",
+            "retry_delays_seconds",
+            "between_groups_seconds",
+            "workers",
+            "active_groups",
+            "first_group_post_limit",
+        }
+        if set(values) != expected:
+            raise ConfigurationError(f"[protection] must contain {', '.join(sorted(expected))}")
+        navigation = _number_pair(values, "navigation_delay_seconds", 10.0, 20.0)
+        scroll = _number_pair(values, "scroll_delay_seconds", 6.0, 12.0)
+        expansion = _number_pair(values, "expansion_delay_seconds", 3.0, 7.0)
+        retries = _number_pair(values, "retry_delays_seconds", 30.0, 120.0)
+        if retries != (30.0, 120.0):
+            raise ConfigurationError("[protection].retry_delays_seconds must equal [30, 120]")
+        between_groups = _number(values, "between_groups_seconds", "protection")
+        workers = _integer(values, "workers", "protection")
+        active_groups = _integer(values, "active_groups", "protection")
+        post_limit = _integer(values, "first_group_post_limit", "protection")
+        if between_groups != 900.0:
+            raise ConfigurationError("[protection].between_groups_seconds must equal 900")
+        if workers != 1 or active_groups != 1:
+            raise ConfigurationError("[protection] requires one worker and one active Group")
+        if not 1 <= post_limit <= 30:
+            raise ConfigurationError("[protection].first_group_post_limit must be from 1 to 30")
+        return OperatorProtectionConfiguration(
+            navigation_delay_seconds=navigation,
+            scroll_delay_seconds=scroll,
+            expansion_delay_seconds=expansion,
+            retry_delays_seconds=retries,
+            between_groups_seconds=between_groups,
+            workers=workers,
+            active_groups=active_groups,
+            first_group_post_limit=post_limit,
         )
 
 
@@ -217,6 +288,36 @@ def _optional_text(values: dict[str, Any], name: str) -> str | None:
     if name not in values:
         return None
     return _text(values, name, "session")
+
+
+def _number(values: dict[str, Any], name: str, table: str) -> float:
+    value = values.get(name)
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ConfigurationError(f"[{table}].{name} must be a number")
+    return float(value)
+
+
+def _integer(values: dict[str, Any], name: str, table: str) -> int:
+    value = values.get(name)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigurationError(f"[{table}].{name} must be an integer")
+    return value
+
+
+def _number_pair(
+    values: dict[str, Any],
+    name: str,
+    minimum: float,
+    maximum: float,
+) -> tuple[float, float]:
+    value = values.get(name)
+    if not isinstance(value, list) or len(value) != 2:
+        raise ConfigurationError(f"[protection].{name} must contain two numbers")
+    lower = _number({"value": value[0]}, "value", "protection")
+    upper = _number({"value": value[1]}, "value", "protection")
+    if lower < minimum or upper > maximum or lower > upper:
+        raise ConfigurationError(f"[protection].{name} must remain within {minimum:g}-{maximum:g}")
+    return lower, upper
 
 
 def _path(values: dict[str, Any], name: str, parent: Path, table: str) -> Path:

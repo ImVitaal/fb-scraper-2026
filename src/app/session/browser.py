@@ -95,10 +95,12 @@ def _browser_copy_ignore(directory: str, names: list[str]) -> set[str]:
         "Code Cache",
         "Crashpad",
         "DawnCache",
+        "Extensions",
         "GPUCache",
         "GrShaderCache",
         "GraphiteDawnCache",
         "ShaderCache",
+        "Sessions",
     }
     ignored = {name for name in names if name in ignored_names}
     if Path(directory).name == "Service Worker":
