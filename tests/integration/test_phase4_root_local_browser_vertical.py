@@ -6,7 +6,7 @@ import json
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import UTC, datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -18,7 +18,10 @@ from app.capture import PlaywrightGroupCaptureAdapter
 from app.cli.main import _capture_selected, app
 from app.session import SessionProfileService
 from app.storage.database import Database
+from app.storage.live_runs import LiveRunRepository
+from app.storage.repositories import JobRepository
 from app.targets import TargetPreparationService
+from app.workflows.live_capture import LiveCaptureWorkflow
 
 FIXTURES = Path(__file__).parents[1] / "fixtures" / "app_operator_redacted"
 
@@ -223,3 +226,65 @@ def test_operator_config_uses_real_browser_live_discovery_and_group_capture(
     ]
     assert len(list(raw_root.glob("*.discovery.html.gz"))) == 1
     assert len([path for path in raw_root.glob("*.html.gz") if ".discovery." not in path.name]) == 1
+
+
+def test_real_browser_interruption_resumes_from_durable_checkpoint(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "output"
+    raw_root = tmp_path / "raw"
+    session_root = tmp_path / "sessions"
+    job_id = "local-browser-resume"
+    lower_bound = datetime(2026, 7, 1, tzinfo=UTC)
+    with Database(output / "scanner.sqlite3") as database:
+        database.migrate()
+        SessionProfileService(database.connection, session_root).import_state(
+            "resume-profile",
+            {"cookies": [], "origins": []},
+        )
+        selected = TargetPreparationService(database.connection).add_url(
+            "https://app.invalid/groups/9100001"
+        )
+        JobRepository(database.connection).create(job_id)
+        LiveRunRepository(database.connection).create(
+            job_id,
+            "resume-profile",
+            selected,
+            lower_bound,
+            "app_rendered_html/1.0",
+        )
+
+    with _fixture_server() as (_, local_url):
+        interrupted_adapter = PlaywrightGroupCaptureAdapter({"cookies": [], "origins": []})
+        with (
+            pytest.raises(KeyboardInterrupt),
+            interrupted_adapter.capture_pages(
+                local_url,
+                lower_bound=lower_bound,
+            ) as capture,
+        ):
+            LiveCaptureWorkflow(output, raw_root).capture_pages(
+                job_id,
+                capture,
+                max_pages=interrupted_adapter.limits.max_pages,
+                interrupt_after_pages=1,
+            )
+
+        resumed_adapter = PlaywrightGroupCaptureAdapter({"cookies": [], "origins": []})
+        with resumed_adapter.capture_pages(
+            local_url,
+            lower_bound=lower_bound,
+        ) as capture:
+            resumed = LiveCaptureWorkflow(output, raw_root).capture_pages(
+                job_id,
+                capture,
+                max_pages=resumed_adapter.limits.max_pages,
+            )
+
+    assert interrupted_adapter.closed
+    assert resumed_adapter.closed
+    assert resumed.identifiers == (
+        "comment:9300001",
+        "group:9100001",
+        "post:9200001",
+    )

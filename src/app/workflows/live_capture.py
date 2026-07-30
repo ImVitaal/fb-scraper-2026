@@ -130,6 +130,15 @@ class LiveCaptureWorkflow:
                 capture_id = sha256(
                     f"{job_id}|{page_number}|{cursor_key}|{raw_digest}".encode()
                 ).hexdigest()
+                existing_capture = database.connection.execute(
+                    "SELECT collected_at FROM raw_captures WHERE capture_id = ?",
+                    (capture_id,),
+                ).fetchone()
+                observed_at = (
+                    datetime.fromisoformat(str(existing_capture["collected_at"]))
+                    if existing_capture is not None
+                    else datetime.now(UTC)
+                )
 
                 # The raw file becomes durable before any parser sees the bytes.
                 stored = self.raw_store.write(capture_id, page.raw_html, suffix=".html")
@@ -141,7 +150,7 @@ class LiveCaptureWorkflow:
                             capture_id=capture_id,
                             raw_sha256=stored.sha256,
                             session_class=session_class,
-                            observed_at=datetime.now(UTC),
+                            observed_at=observed_at,
                             lower_bound=live_run.lower_bound,
                         )
                     else:

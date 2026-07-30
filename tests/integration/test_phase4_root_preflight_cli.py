@@ -51,12 +51,12 @@ def test_session_health_command_classifies_ready_without_printing_state(
 ) -> None:
     output = tmp_path / "output"
     session_root = tmp_path / "sessions"
-    secret = "session-value-not-for-output"
+    opaque_value = "session-value-not-for-output"
     with Database(output / "scanner.sqlite3") as database:
         database.migrate()
         SessionProfileService(database.connection, session_root).import_state(
             "operator",
-            {"cookies": [{"name": "session", "value": secret}], "origins": []},
+            {"cookies": [{"name": "session", "value": opaque_value}], "origins": []},
         )
 
     monkeypatch.setattr(
@@ -86,7 +86,7 @@ def test_session_health_command_classifies_ready_without_printing_state(
         "evidence": ["authenticated_route_reached"],
         "health": "ready",
     }
-    assert secret not in result.stdout
+    assert opaque_value not in result.stdout
 
 
 def test_import_browser_encrypts_profile_state_without_printing_secrets(
@@ -95,11 +95,11 @@ def test_import_browser_encrypts_profile_state_without_printing_secrets(
 ) -> None:
     browser_profile = tmp_path / "browser-profile"
     browser_profile.mkdir()
-    secret = "imported-browser-secret"
+    opaque_value = "imported-browser-value"
     monkeypatch.setattr(
         "app.cli.main.collect_imported_browser_profile_state",
         lambda directory, channel=None: {
-            "cookies": [{"name": "session", "value": secret}],
+            "cookies": [{"name": "session", "value": opaque_value}],
             "origins": [],
         },
     )
@@ -126,4 +126,4 @@ def test_import_browser_encrypts_profile_state_without_printing_secrets(
     payload = json.loads(result.stdout)
     assert payload["session_class"] == "imported"
     assert payload["source_browser"] == "chrome"
-    assert secret not in result.stdout
+    assert opaque_value not in result.stdout
