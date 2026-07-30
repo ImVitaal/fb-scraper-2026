@@ -3,7 +3,7 @@
 **Updated:** 2026-07-30  
 **Repository:** `C:\Users\teqhv\fb scraper`  
 **Branch:** `main`  
-**Active milestone:** Phase 4F controlled one-Group validation
+**Active milestone:** Phase 4F controlled one-Group validation — session attachment lead open
 
 ## Summary
 
@@ -50,8 +50,8 @@ The controlled APP one-Group and ten-Group gates still require an operator sessi
 
 ## Verified results
 
-- Tests: **140 passed**.
-- Coverage: **82.08%**.
+- Tests: **178 passed**.
+- Coverage: **81.94%**.
 - Ruff format: passed.
 - Ruff lint: passed.
 - `ty` type checking: passed.
@@ -72,12 +72,22 @@ The controlled APP one-Group and ten-Group gates still require an operator sessi
 - `98c515a` — deterministic resume identity correction.
 - `9a6ec4f` — operator receipts and visible capture defaults.
 - `51e8dbd` — refreshed Phase 4 release evidence.
+- `c811eb9` — Phase 4F protection evidence parity.
+- `c7cf462` — scanner-owned persistent guided browser profile.
+- `a83d92d` — guided session checkpoint stop record.
+- `8de6e03` — guided-login rendering lead record.
 
 The branch is nine commits ahead of `origin/main`. No release commit was pushed.
 
 ## Current external state
 
 - The default scanner root has no ready encrypted session profile.
+- Guided login reaches the account two-step route but renders only a persistent loading
+  indicator. Two concurrent guided-login processes were stopped. No session envelope,
+  discovery, membership change, capture, or export was created.
+- The active runtime lead is `blocked_external_account_checkpoint`. The planned resolution is
+  a normal Chrome attachment flow for first login, followed by automated reuse of its scanner-
+  owned profile.
 - No controlled target or operator TOML file is present.
 - Chrome currently has active processes.
 - Browser-profile import requires Chrome to be closed first.
@@ -117,25 +127,26 @@ Start only after Phase 4F passes.
 ## Selected operator bundle
 
 ```text
-SESSION_METHOD=browser_profile
-PROFILE_NAME=Default
+SESSION_PREPARATION=normal_chrome_attachment
+PROFILE_NAME=operator
 KEYWORD=local community
 LOCATION=London
 ```
 
 The operator delegated Group selection to the scanner.
 
-Close Chrome before browser-profile import.
+The copied `Default` profile path remains incompatible with application-bound encryption.
 
 ## Next execution order
 
-1. Receive the operator bundle.
-2. Prepare and classify the encrypted session.
-3. Run and verify the controlled one-Group workflow.
-4. Record the Phase 4F receipt.
-5. Run and verify the controlled ten-Group workflow.
-6. Refresh the Phase 4 report and session state.
-7. Commit the final verified evidence.
+1. Implement and verify the normal Chrome attachment session path.
+2. Complete account verification in that normal Chrome session.
+3. Prepare and classify the encrypted session.
+4. Run and verify the controlled one-Group workflow.
+5. Record the Phase 4F receipt.
+6. Run and verify the controlled ten-Group workflow.
+7. Refresh the Phase 4 report and session state.
+8. Commit the final verified evidence.
 
 ## Current release decision
 
