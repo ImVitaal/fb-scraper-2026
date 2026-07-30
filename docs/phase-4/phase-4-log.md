@@ -275,3 +275,11 @@ Results:
 - The external `operator` session profile is still absent. No discovery, membership change,
   or live Group capture occurred during this verification step.
 
+## Guided session stop — 2026-07-30
+
+- The scanner-owned persistent Chrome profile reached an account verification checkpoint.
+- The browser process was stopped immediately.
+- No Group discovery, membership change, capture, export, replay, receipt, or session envelope
+  was created from that attempt.
+- The verification route and its parameters were not written to project records.
+

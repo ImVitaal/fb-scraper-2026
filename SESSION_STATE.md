@@ -122,6 +122,8 @@ uv run pytest
 - A ready encrypted APP session is not present in the default session root. The one-time
   `pgscan session login --profile operator --channel chrome` command must finish and print
   its redacted metadata before automated discovery or capture starts.
+- The latest guided-login attempt stopped at an account verification checkpoint. No collection
+  actions ran and no session envelope was created.
 - Chrome `Default` was closed and readable during the 2026-07-30 controlled attempt.
 - Browser-profile import returned
   `browser profile did not contain an authenticated session`.
