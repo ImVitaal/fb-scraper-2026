@@ -238,3 +238,38 @@ Ruff: passed
 ty: passed
 ```
 
+## Phase 4F parity correction and root verification — 2026-07-30
+
+Root reviewed the three bounded agent handbacks. The agents changed only their assigned
+paths and made no commits.
+
+- The browser Post ceiling is cumulative for one rendered capture. The 31st unique Post
+  is removed before normalization even when it appears on a later page.
+- A partial-stop receipt now hashes the durable Group, Post, and Comment identifier set.
+  This keeps receipt evidence aligned with records saved before the immediate stop.
+- Guided login remains the supported one-time preparation route when copied Chrome profiles
+  use application-bound encryption. The later discovery and collection workflow uses the
+  encrypted scanner session without manual browser collection.
+
+Root verification:
+
+```powershell
+uv run pgscan doctor --output "$env:LOCALAPPDATA\private-group-scanner" `
+  --raw-root "$env:LOCALAPPDATA\private-group-scanner\raw" `
+  --session-root "$env:LOCALAPPDATA\private-group-scanner\sessions"
+uv run ruff format --check .
+uv run ruff check .
+uv run ty check
+uv run pytest
+```
+
+Results:
+
+- Doctor: all nine checks passed.
+- Ruff format and lint: passed.
+- `ty`: passed.
+- Tests: 178 passed in 264.69 seconds; coverage 81.94%.
+- Tracked-file secret scan: zero findings.
+- The external `operator` session profile is still absent. No discovery, membership change,
+  or live Group capture occurred during this verification step.
+

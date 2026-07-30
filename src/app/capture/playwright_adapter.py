@@ -146,6 +146,7 @@ class _BrowserRenderedPageCapture:
         self._interaction_count = 0
         self._storage_bytes = 0
         self._completed: list[str] = []
+        self._captured_post_ids: set[str] = set()
         self._pending: _Action | None = None
         self._stop_failure: BrowserStateError | None = None
 
@@ -328,7 +329,6 @@ class _BrowserRenderedPageCapture:
     def _bounded_html(self, raw_html: str) -> bytes:
         """Exclude known and over-limit Posts from the normalized snapshot."""
         soup = BeautifulSoup(raw_html, "lxml")
-        seen = 0
         posts = list(soup.select("article"))
         posts.extend(
             post
@@ -344,13 +344,17 @@ class _BrowserRenderedPageCapture:
                 post_id = match.group(1) if match else None
             if post_id is None:
                 continue
+            post_id = str(post_id)
             if post_id in self._adapter.known_post_ids:
-                self._adapter._record_known_post_skip(str(post_id))
+                self._adapter._record_known_post_skip(post_id)
                 post.decompose()
                 continue
-            seen += 1
-            if seen > self._adapter.limits.max_recent_posts:
+            if post_id in self._captured_post_ids:
+                continue
+            if len(self._captured_post_ids) >= self._adapter.limits.max_recent_posts:
                 post.decompose()
+                continue
+            self._captured_post_ids.add(post_id)
         return str(soup).encode("utf-8")
 
     @staticmethod
@@ -371,6 +375,8 @@ class _BrowserRenderedPageCapture:
 
     def _history_boundary_reached(self) -> bool:
         assert self._page is not None
+        if len(self._captured_post_ids) >= self._adapter.limits.max_recent_posts:
+            return True
         post_ids: set[str] = set()
         anchors = self._page.locator("[data-pgscan-post-id], article a[href*='/posts/']")
         for index in range(anchors.count()):

@@ -73,6 +73,28 @@ def test_browser_actions_wait_for_the_configured_kind_of_delay() -> None:
     assert page.waits == [7.0]
 
 
+def test_post_limit_is_cumulative_across_rendered_pages() -> None:
+    limits = BrowserCaptureLimits(max_recent_posts=2)
+    capture, _ = _capture(limits)
+
+    first_page = """
+        <main>
+            <article data-pgscan-post-id="post-1">one</article>
+            <article data-pgscan-post-id="post-2">two</article>
+        </main>
+    """
+    second_page = """
+        <main>
+            <article data-pgscan-post-id="post-3">three</article>
+        </main>
+    """
+
+    capture._bounded_html(first_page)
+    bounded_second_page = capture._bounded_html(second_page).decode()
+
+    assert 'data-pgscan-post-id="post-3"' not in bounded_second_page
+
+
 def test_failed_operations_use_bounded_retry_delays() -> None:
     limits = BrowserCaptureLimits(
         max_retries=2,

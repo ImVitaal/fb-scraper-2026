@@ -92,6 +92,15 @@
 - Successful operator receipts reconcile expected and exported visible top-level Comments.
 - Operator receipt schema `1.1` records the Comment reconciliation counts and result.
 
+### Phase 4F parity verification — 2026-07-30
+
+- The 30-Post ceiling now applies across the complete rendered capture, not to each page.
+- Partial-stop receipts hash every durable Group, Post, and Comment identifier present at stop time.
+- Root reviewed the protection, receipt, and session-runtime handbacks. No agent committed changes.
+- `pgscan doctor` passed all nine checks.
+- Ruff format and lint passed. `ty` passed. Full suite: 178 passed with 81.94% coverage.
+- Tracked-file secret scan: zero findings.
+
 ## Verification
 
 ```powershell
@@ -108,7 +117,9 @@ uv run pytest
 
 ## Current operator gaps
 
-- A ready encrypted APP session is not present in the default session root.
+- A ready encrypted APP session is not present in the default session root. The one-time
+  `pgscan session login --profile operator` command must finish and print its redacted
+  metadata before automated discovery or capture starts.
 - Chrome `Default` was closed and readable during the 2026-07-30 controlled attempt.
 - Browser-profile import returned
   `browser profile did not contain an authenticated session`.

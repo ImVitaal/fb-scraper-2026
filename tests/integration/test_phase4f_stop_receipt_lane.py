@@ -4,17 +4,19 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
-from app.capture import BrowserStateError, PlaywrightGroupCaptureAdapter
+from app.capture import BrowserCaptureLimits, BrowserStateError, PlaywrightGroupCaptureAdapter
 from app.cli.main import _capture_selected
 from app.configuration import OperatorProtectionConfiguration
 from app.session import SessionProfileService
 from app.storage.database import Database
 from app.targets import TargetPreparationService
+from app.workflows.operator_receipt import OperatorRunReceiptWriter
 
 FAILURE = Path(__file__).parents[1] / "fixtures" / "phase4b_browser" / "failure.html"
 
@@ -116,3 +118,95 @@ def test_challenge_and_restriction_stop_without_retry(
     assert "STORAGE_VALUE_SENTINEL_4F" not in text
     assert "fixture_cookie" not in text
     assert "fixture_token" not in text
+
+
+def test_partial_stop_receipt_hashes_durable_identifiers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, initial_receipt = _protected_stop(tmp_path, monkeypatch, "challenge")
+    run_id = str(initial_receipt["run_id"])
+    output = tmp_path / "output"
+    observed_at = datetime.now().astimezone().isoformat()
+    capture_id = "partial-stop-capture"
+
+    with Database(output / "scanner.sqlite3") as database:
+        database.connection.execute(
+            """
+            INSERT INTO raw_captures(
+                capture_id, sha256, source_url, collected_at, storage_path, byte_count
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (capture_id, "a" * 64, "https://example.test/group", observed_at, "partial", 7),
+        )
+        database.connection.execute(
+            """
+            INSERT INTO groups(
+                group_id, canonical_url, observed_at, raw_capture_id, schema_version, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "9100001",
+                "https://example.test/groups/9100001",
+                observed_at,
+                capture_id,
+                "1.0",
+                "{}",
+            ),
+        )
+        database.connection.execute(
+            """
+            INSERT INTO posts(
+                post_id, group_id, canonical_url, observed_at, raw_capture_id,
+                schema_version, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "9200001",
+                "9100001",
+                "https://example.test/groups/9100001/posts/9200001",
+                observed_at,
+                capture_id,
+                "1.0",
+                '{"comments_count": 1}',
+            ),
+        )
+        database.connection.execute(
+            """
+            INSERT INTO comments(
+                comment_id, post_id, group_id, parent_comment_id, observed_at,
+                raw_capture_id, schema_version, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "9300001",
+                "9200001",
+                "9100001",
+                None,
+                observed_at,
+                capture_id,
+                "1.0",
+                "{}",
+            ),
+        )
+        database.connection.commit()
+
+    rewritten = OperatorRunReceiptWriter(output).write_stop(
+        run_id,
+        BrowserCaptureLimits(),
+        protection=cast(dict[str, object], initial_receipt["protection"]),
+        stop_reason="challenge",
+    )
+    receipt = json.loads(rewritten.path.read_text(encoding="utf-8"))
+    identifiers = ["comment:9300001", "group:9100001", "post:9200001"]
+    expected = sha256(
+        json.dumps(
+            identifiers,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+    assert receipt["counts"] == {"comments": 1, "failures": 1, "groups": 1, "posts": 1}
+    assert receipt["identifier_set_sha256"] == expected

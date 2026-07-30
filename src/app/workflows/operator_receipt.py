@@ -218,6 +218,23 @@ class OperatorRunReceiptWriter:
                 """,
                 (live.group_id, live.group_id, live.group_id),
             ).fetchone()
+            identifier_rows = database.connection.execute(
+                """
+                SELECT 'comment:' || comment_id AS identifier
+                FROM comments
+                WHERE group_id = ?
+                UNION ALL
+                SELECT 'group:' || group_id AS identifier
+                FROM groups
+                WHERE group_id = ?
+                UNION ALL
+                SELECT 'post:' || post_id AS identifier
+                FROM posts
+                WHERE group_id = ?
+                ORDER BY identifier
+                """,
+                (live.group_id, live.group_id, live.group_id),
+            ).fetchall()
             failures = database.connection.execute(
                 """
                 SELECT COUNT(*) AS count
@@ -231,6 +248,7 @@ class OperatorRunReceiptWriter:
         raw_captures = [
             {"byte_count": int(row["byte_count"]), "sha256": str(row["sha256"])} for row in raw_rows
         ]
+        identifier_set = [str(row["identifier"]) for row in identifier_rows]
         input_payload = {
             "adapter_version": live.adapter_version,
             "canonical_url_sha256": self._text_sha256(live.canonical_url),
@@ -249,7 +267,7 @@ class OperatorRunReceiptWriter:
                 "posts": int(counts["posts"]),
             },
             "exports": {},
-            "identifier_set_sha256": self._json_sha256([]),
+            "identifier_set_sha256": self._json_sha256(identifier_set),
             "input": input_payload,
             "input_sha256": self._json_sha256(input_payload),
             "limits": asdict(limits),
