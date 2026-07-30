@@ -1,8 +1,8 @@
 # Private Group Scanner — internal build brief
 
-**Status:** Fixture-backed Phase 1 test release
+**Status:** Fixture-backed Phases 1–3 test release
 **Primary audience:** Technical operators and implementation agents
-**Current milestone:** Phase 1 — one-Group correctness demo
+**Current milestone:** Phase 4A — operator preflight and session health
 
 ## Mission
 
@@ -13,7 +13,7 @@ The product must first prove correct, replayable, resumable collection. It will
 optimize throughput after that proof exists. It will make no competitor
 superiority claim before reproducible comparative evidence exists.
 
-## Four-phase direction
+## Five-phase direction
 
 ### Phase 1 — One-Group correctness
 
@@ -47,13 +47,19 @@ Freeze equal workloads and field contracts. Run repeated cold and warm tests.
 Store receipts. Decide which speed, efficiency, completeness, and cost claims
 the evidence supports.
 
-### Phase 4 — Product expansion
+### Phase 4 — Operator working release
 
-Expand only after the private-Group advantage is proven.
+Connect the validated fixture architecture to one controlled operator workflow.
+Then repeat the accepted workflow across ten Groups.
+
+Use `OPERATOR_WORKING_RELEASE_PLAN.md` as the current execution source.
+
+### Phase 5 — Product expansion
+
+Expand only after the Phase 4 operator gate passes.
 
 Candidate additions include Pages, Events, profiles, advertisements,
-Marketplace, scheduling, weekly intelligence, broader discovery, and advanced
-analysis.
+Marketplace, scheduling, weekly intelligence, broader discovery, and advanced analysis.
 
 ## Phase 1 product contract
 

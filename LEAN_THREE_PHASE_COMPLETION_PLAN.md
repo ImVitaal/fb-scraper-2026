@@ -2,8 +2,8 @@
 
 **Revision:** 1
 **Date:** 2026-07-29
-**Status:** Current execution source
-**Scope:** Complete Phases 1, 2, and 3. Keep Phase 4 deferred.
+**Status:** Completed fixture-release plan
+**Scope:** Completed fixture work for Phases 1, 2, and 3.
 
 ## Objective
 
@@ -239,7 +239,9 @@ Before adding architecture, identify the active milestone, failing test or
 measured bottleneck, rejected smaller solution, and operator-visible benefit.
 Skip the architecture when those answers are not concrete.
 
-# Immediate next action
+# Next execution source
 
-Start 1A. The next accepted artifact must be a working fixture-backed
-raw-to-replay CLI slice, not another framework layer.
+Phases 1–3 now have fixture-backed completion receipts.
+
+Use `OPERATOR_WORKING_RELEASE_PLAN.md` for the controlled operator working release.
+Do not start product expansion before its Phase 4 gate passes.

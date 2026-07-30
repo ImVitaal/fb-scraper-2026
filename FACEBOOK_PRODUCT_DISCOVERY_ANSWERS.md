@@ -1,8 +1,8 @@
 # Product discovery answers
 
 **Recorded:** 2026-07-29
-**Revision:** 2
-**Purpose:** Record the operator decisions controlling the four-phase direction.
+**Revision:** 3
+**Purpose:** Record the operator decisions controlling the five-phase direction.
 
 ## Product objective
 
@@ -16,14 +16,15 @@
 | Primary audience | Technical operators |
 | Access model | Free and self-hosted |
 
-## Four phases
+## Five phases
 
 | Phase | Decision |
 |---|---|
 | 1 | Prove one complete private-Group discovery-to-export workflow |
 | 2 | Scale the proven workflow to ten Groups and optimize performance |
 | 3 | Select competitors and run reproducible equal-contract comparisons |
-| 4 | Expand to additional surfaces and intelligence features |
+| 4 | Connect the fixture architecture to controlled one-Group and ten-Group operator runs |
+| 5 | Expand to additional surfaces and intelligence features |
 
 ## Phase 1 scope
 
@@ -89,5 +90,6 @@ after the working demo.
 
 1. Select the paid hosted competitors for Phase 3.
 2. Define Phase 3 superiority thresholds.
-3. Select Phase 4 expansion features.
+3. Complete the Phase 4 operator working release.
 4. Define scheduled monitoring after the private-Group core is proven.
+5. Select Phase 5 expansion features.
