@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Dynamic Group Fixture</title>
+    <style>
+      body { min-height: 2400px; }
+      [hidden] { display: none; }
+    </style>
+  </head>
+  <body>
+    <main data-pgscan-content-ready="true" data-context-id="fixture-context">
+      <article data-pgscan-post-id="post-new">
+        <time datetime="2026-07-29T12:00:00Z"></time>
+        <button data-pgscan-expand-post="post-new">See more</button>
+        <p data-expanded-post hidden>Expanded post body</p>
+        <button data-pgscan-expand-comments="post-new">View 2 more comments</button>
+        <section data-top-level-comments hidden>
+          <p data-comment-id="comment-one">First top-level comment</p>
+          <p data-comment-id="comment-two">Second top-level comment</p>
+        </section>
+        <button data-pgscan-expand-replies="comment-one">View 3 replies</button>
+      </article>
+      <section data-lazy-posts></section>
+    </main>
+    <script>
+      document.querySelector("[data-pgscan-expand-post]").addEventListener("click", (event) => {
+        event.currentTarget.remove();
+        document.querySelector("[data-expanded-post]").hidden = false;
+      });
+      document.querySelector("[data-pgscan-expand-comments]").addEventListener("click", (event) => {
+        event.currentTarget.remove();
+        document.querySelector("[data-top-level-comments]").hidden = false;
+      });
+      let loaded = false;
+      window.addEventListener("scroll", () => {
+        if (loaded || window.scrollY < 400) return;
+        loaded = true;
+        document.querySelector("[data-lazy-posts]").innerHTML = `
+          <article data-pgscan-post-id="post-old">
+            <time datetime="2026-06-01T12:00:00Z"></time>
+            <p>Old boundary post</p>
+          </article>
+          <div data-pgscan-history-boundary="reached"></div>
+        `;
+      });
+    </script>
+  </body>
+</html>

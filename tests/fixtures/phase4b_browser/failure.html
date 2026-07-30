@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8"><title>Failure Fixture</title></head>
+  <body>
+    <main id="failure-root"></main>
+    <script>
+      const state = new URLSearchParams(window.location.search).get("state");
+      const root = document.querySelector("#failure-root");
+      const fixtures = {
+        login: '<form data-pgscan-login-required><input name="email"></form>',
+        challenge: '<div data-pgscan-challenge>Security check required</div>',
+        restricted: '<div data-pgscan-restricted>Account temporarily restricted</div>',
+        unavailable: '<div data-pgscan-group-unavailable>This content is not available</div>',
+        drift: '<div>Unknown unsupported layout</div>',
+      };
+      root.innerHTML = fixtures[state] || fixtures.drift;
+    </script>
+  </body>
+</html>
