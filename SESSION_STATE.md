@@ -124,6 +124,9 @@ uv run pytest
   its redacted metadata before automated discovery or capture starts.
 - The latest guided-login attempt stopped at an account verification checkpoint. No collection
   actions ran and no session envelope was created.
+- Current runtime lead: the scanner-owned Chrome profile reaches two-step verification but the
+  page remains on a loading indicator. Treat this as an external checkpoint; do not retry the
+  guided-login command while the lead is unresolved.
 - Chrome `Default` was closed and readable during the 2026-07-30 controlled attempt.
 - Browser-profile import returned
   `browser profile did not contain an authenticated session`.

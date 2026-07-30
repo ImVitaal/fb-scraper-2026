@@ -283,3 +283,11 @@ Results:
   was created from that attempt.
 - The verification route and its parameters were not written to project records.
 
+## Runtime lead — guided-login rendering failure
+
+| Lead | Evidence | State | Next action |
+|---|---|---|---|
+| Scanner-owned Chrome reaches the account two-step route but renders only a persistent loading indicator. | Operator screenshot; repeated guided-login runs; no session envelope created. | `blocked_external_account_checkpoint` | Replace the Playwright-mediated first-login path with a normal Chrome attachment flow. Keep discovery and capture stopped. |
+
+The screenshot itself remains outside the repository. No verification URL, code, token, or account content was copied into these records.
+
