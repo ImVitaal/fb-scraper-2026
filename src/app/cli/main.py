@@ -33,6 +33,7 @@ from app.discovery import (
     MembershipState,
     SessionDiscoveryAdapter,
     SessionDiscoveryFixtureAdapter,
+    UnsupportedDiscoveryLayoutError,
 )
 from app.discovery.live import DiscoveryPage
 from app.preflight import run_preflight
@@ -174,15 +175,20 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
                 headless=configuration.headless,
                 protection_sink=discovery_protection,
             )
-        except BrowserStateError as error:
+        except (BrowserStateError, UnsupportedDiscoveryLayoutError) as error:
+            stop_reason = (
+                error.failure_class
+                if isinstance(error, BrowserStateError)
+                else "unsupported_discovery_layout"
+            )
             receipt = OperatorRunReceiptWriter(configuration.output).write_discovery_stop(
                 str(uuid4()),
                 profile=configuration.session.profile,
                 protection=discovery_protection,
-                stop_reason=error.failure_class,
+                stop_reason=stop_reason,
             )
             raise BrowserStateError(
-                error.failure_class,
+                stop_reason,
                 f"operator discovery stopped; receipt={receipt.path}",
             ) from error
     return _capture_selected(
