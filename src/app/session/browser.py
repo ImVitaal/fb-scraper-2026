@@ -3,15 +3,153 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
-from shutil import copy2, copytree
+from shutil import copy2, copytree, which
+from subprocess import Popen
 from tempfile import TemporaryDirectory
+from time import monotonic, sleep
 from typing import cast
 
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 
 from app.session.profiles import SessionEnvelopeError, StorageState
+
+
+class NormalChromeAttachmentTimeout(RuntimeError):
+    """Raised when normal Chrome does not expose its local CDP endpoint in time."""
+
+
+class NormalChromeAttachmentFailure(RuntimeError):
+    """Raised when normal Chrome cannot provide a valid attached storage state."""
+
+
+def launch_normal_chrome_attachment(
+    start_url: str,
+    *,
+    user_data_directory: Path,
+    channel: str | None = "chrome",
+    timeout_seconds: int = 15,
+) -> None:
+    """Launch scanner-owned normal Chrome and confirm its loopback CDP endpoint."""
+    if channel not in {None, "chrome"}:
+        raise NormalChromeAttachmentFailure("normal Chrome attachment requires Chrome")
+    if timeout_seconds <= 0:
+        raise NormalChromeAttachmentFailure("attachment timeout must be positive")
+    try:
+        user_data_directory.mkdir(parents=True, exist_ok=True)
+        endpoint_file = user_data_directory / "DevToolsActivePort"
+        if endpoint_file.exists():
+            endpoint_file.unlink()
+    except OSError as error:
+        raise NormalChromeAttachmentFailure("normal Chrome profile preparation failed") from error
+    chrome = _resolve_normal_chrome_executable()
+    try:
+        process = Popen(
+            [
+                str(chrome),
+                f"--user-data-dir={user_data_directory}",
+                "--remote-debugging-address=127.0.0.1",
+                "--remote-debugging-port=0",
+                "--no-first-run",
+                "--no-default-browser-check",
+                start_url,
+            ]
+        )
+    except OSError as error:
+        raise NormalChromeAttachmentFailure("normal Chrome did not start") from error
+    _wait_for_local_devtools_endpoint(
+        endpoint_file,
+        timeout_seconds=timeout_seconds,
+        process=process,
+    )
+
+
+def collect_normal_chrome_attachment_state(
+    *,
+    user_data_directory: Path,
+    timeout_seconds: int = 15,
+) -> StorageState:
+    """Attach to already launched normal Chrome and return its storage state."""
+    if timeout_seconds <= 0:
+        raise NormalChromeAttachmentFailure("attachment timeout must be positive")
+    endpoint = _wait_for_local_devtools_endpoint(
+        user_data_directory / "DevToolsActivePort",
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.connect_over_cdp(endpoint)
+            try:
+                if not browser.contexts:
+                    raise NormalChromeAttachmentFailure("normal Chrome has no browser context")
+                state = browser.contexts[0].storage_state()
+            finally:
+                browser.close()
+    except NormalChromeAttachmentFailure:
+        raise
+    except (OSError, PlaywrightError) as error:
+        raise NormalChromeAttachmentFailure("normal Chrome attachment failed") from error
+    if not isinstance(state, dict):
+        raise NormalChromeAttachmentFailure("normal Chrome returned an invalid storage state")
+    storage_state = cast(StorageState, state)
+    if not storage_state.get("cookies") and not storage_state.get("origins"):
+        raise NormalChromeAttachmentFailure(
+            "normal Chrome did not produce an authenticated session"
+        )
+    return storage_state
+
+
+def _resolve_normal_chrome_executable() -> Path:
+    executable = which("chrome.exe")
+    if executable is not None:
+        return Path(executable)
+    roots = (
+        os.environ.get("PROGRAMFILES"),
+        os.environ.get("PROGRAMW6432"),
+        os.environ.get("PROGRAMFILES(X86)"),
+        os.environ.get("LOCALAPPDATA"),
+    )
+    for root in roots:
+        if root is None:
+            continue
+        candidate = Path(root) / "Google" / "Chrome" / "Application" / "chrome.exe"
+        if candidate.is_file():
+            return candidate
+    raise NormalChromeAttachmentFailure("normal Chrome executable was not found")
+
+
+def _wait_for_local_devtools_endpoint(
+    endpoint_file: Path,
+    *,
+    timeout_seconds: int,
+    process: Popen[bytes] | None = None,
+) -> str:
+    deadline = monotonic() + timeout_seconds
+    while monotonic() < deadline:
+        if process is not None and process.poll() is not None:
+            raise NormalChromeAttachmentFailure("normal Chrome exited before attachment")
+        if endpoint_file.is_file():
+            try:
+                return _parse_local_devtools_endpoint(endpoint_file.read_text(encoding="utf-8"))
+            except OSError as error:
+                raise NormalChromeAttachmentFailure(
+                    "normal Chrome endpoint was unreadable"
+                ) from error
+        sleep(0.1)
+    raise NormalChromeAttachmentTimeout("normal Chrome attachment timed out")
+
+
+def _parse_local_devtools_endpoint(value: str) -> str:
+    lines = value.splitlines()
+    if len(lines) < 2 or not lines[0].isdigit() or not lines[1].startswith("/devtools/browser/"):
+        raise NormalChromeAttachmentFailure("normal Chrome endpoint was invalid")
+    port = int(lines[0])
+    if not 1 <= port <= 65535:
+        raise NormalChromeAttachmentFailure("normal Chrome endpoint was invalid")
+    return f"http://127.0.0.1:{port}"
 
 
 def collect_guided_storage_state(

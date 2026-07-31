@@ -1,6 +1,6 @@
 # Private Group Scanner — session state
 
-**Updated:** 2026-07-30
+**Updated:** 2026-07-31
 **Current release:** Phase 4 local-browser release candidate
 **Active plan:** `OPERATOR_WORKING_RELEASE_PLAN.md`
 
@@ -119,24 +119,10 @@ uv run pytest
 
 ## Current operator gaps
 
-- A ready encrypted APP session is not present in the default session root. The one-time
-  `pgscan session login --profile operator --channel chrome` command must finish and print
-  its redacted metadata before automated discovery or capture starts.
-- The latest guided-login attempt stopped at an account verification checkpoint. No collection
-  actions ran and no session envelope was created.
-- Current runtime lead: the scanner-owned Chrome profile reaches two-step verification but the
-  page remains on a loading indicator. Treat this as an external checkpoint; do not retry the
-  guided-login command while the lead is unresolved.
-- Chrome `Default` was closed and readable during the 2026-07-30 controlled attempt.
-- Browser-profile import returned
-  `browser profile did not contain an authenticated session`.
-- The source database contained nine APP-domain rows: one session row and eight
-  unexpired persistent rows.
-- Playwright reported token decryption failures while launching the copied
-  Chrome 150 profile.
-- Treat copied-profile decryption as the current external runtime-compatibility
-  prerequisite. The source profile remains unchanged.
-- Automatic discovery found no joined Group matching the requested keyword and location.
+- The normal-Chrome attachment workflow produced a ready encrypted session in the external
+  default session root. The session material remains outside the repository.
+- The protected live discovery attempt returned no joined accessible Group. Search results
+  with Join controls were excluded before selection, capture, or any membership action.
 - The controlled APP one-Group receipt remains open.
 - The controlled ten-Group run must wait for the one-Group gate.
 

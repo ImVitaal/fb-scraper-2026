@@ -36,9 +36,13 @@ from app.discovery.live import DiscoveryPage
 from app.preflight import run_preflight
 from app.retention import RetentionService
 from app.session import (
+    NormalChromeAttachmentFailure,
+    NormalChromeAttachmentTimeout,
     SessionProfileService,
     collect_guided_storage_state,
     collect_imported_browser_profile_state,
+    collect_normal_chrome_attachment_state,
+    launch_normal_chrome_attachment,
     probe_with_playwright,
 )
 from app.storage.database import Database
@@ -966,6 +970,73 @@ def login(
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
     typer.echo(json.dumps(metadata.as_dict(), sort_keys=True))
+
+
+@session_app.command("attach-chrome")
+def attach_chrome_session(
+    profile: Annotated[str, typer.Option("--profile")],
+    start_url: Annotated[str, typer.Option("--start-url")] = "https://www.facebook.com/",
+    channel: Annotated[str | None, typer.Option("--channel")] = "chrome",
+    attachment_timeout_seconds: Annotated[int, typer.Option("--attachment-timeout-seconds")] = 15,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
+    """Launch scanner-owned normal Chrome and wait for operator sign-in."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            browser_profile = SessionProfileService(
+                database.connection, session_root
+            ).browser_profile_directory(profile)
+        launch_normal_chrome_attachment(
+            start_url,
+            user_data_directory=browser_profile,
+            channel=channel,
+            timeout_seconds=attachment_timeout_seconds,
+        )
+    except NormalChromeAttachmentTimeout:
+        typer.echo(json.dumps({"state": "timeout"}, sort_keys=True))
+        raise typer.Exit(1) from None
+    except NormalChromeAttachmentFailure:
+        typer.echo(json.dumps({"state": "attachment_failure"}, sort_keys=True))
+        raise typer.Exit(1) from None
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps({"state": "awaiting_operator"}, sort_keys=True))
+
+
+@session_app.command("finalize-chrome")
+def finalize_chrome_session(
+    profile: Annotated[str, typer.Option("--profile")],
+    attachment_timeout_seconds: Annotated[int, typer.Option("--attachment-timeout-seconds")] = 15,
+    output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
+    session_root: Annotated[Path, typer.Option("--session-root")] = DEFAULT_SESSION_ROOT,
+) -> None:
+    """Encrypt the completed normal Chrome session and close its attachment."""
+    try:
+        with Database(output / "scanner.sqlite3") as database:
+            database.migrate()
+            sessions = SessionProfileService(database.connection, session_root)
+            state = collect_normal_chrome_attachment_state(
+                user_data_directory=sessions.browser_profile_directory(profile),
+                timeout_seconds=attachment_timeout_seconds,
+            )
+            metadata = sessions.save_guided_state(
+                profile,
+                state,
+                source_browser="normal_chrome_cdp_persistent",
+            )
+    except NormalChromeAttachmentTimeout:
+        typer.echo(json.dumps({"state": "timeout"}, sort_keys=True))
+        raise typer.Exit(1) from None
+    except NormalChromeAttachmentFailure:
+        typer.echo(json.dumps({"state": "attachment_failure"}, sort_keys=True))
+        raise typer.Exit(1) from None
+    except (OSError, ValueError, RuntimeError) as error:
+        typer.echo(f"error: {error}")
+        raise typer.Exit(1) from error
+    typer.echo(json.dumps({"metadata": metadata.as_dict(), "state": "completed"}, sort_keys=True))
 
 
 @session_app.command("inspect")

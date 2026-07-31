@@ -291,3 +291,21 @@ Results:
 
 The screenshot itself remains outside the repository. No verification URL, code, token, or account content was copied into these records.
 
+## Normal-Chrome session attachment and controlled discovery — 2026-07-31
+
+- Added `pgscan session attach-chrome` and `pgscan session finalize-chrome` for a
+  scanner-owned normal Chrome profile with loopback-only CDP attachment. The finalized
+  storage state remains encrypted with the existing current-user DPAPI envelope.
+- The external session passed authenticated Group-route health (`ready`); no session
+  values, target URL, raw capture, or browser profile entered the repository.
+- `pgscan doctor` passed all nine checks. The protected live discovery run used one
+  worker, one active Group, 10–20 second navigation pacing, 30/120 second retry
+  schedule, and the 30-Post ceiling.
+- Discovery returned only results displaying Join controls. The existing joined-only
+  target contract rejected those candidates before target selection or capture. No
+  membership action, Group capture, export, replay, or success receipt occurred.
+- Full local verification after integration: Ruff format and lint passed; `ty` passed;
+  186 tests passed at 80.85% coverage; tracked-file secret scan found zero findings.
+- Phase 4F remains open pending one already-joined, accessible Group. Phase 4G remains
+  gated by that receipt.
+

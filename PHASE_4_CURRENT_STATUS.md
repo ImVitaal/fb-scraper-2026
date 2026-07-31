@@ -1,15 +1,15 @@
 # Phase 4 current status
 
-**Updated:** 2026-07-30  
+**Updated:** 2026-07-31
 **Repository:** `C:\Users\teqhv\fb scraper`  
 **Branch:** `main`  
-**Active milestone:** Phase 4F controlled one-Group validation — session attachment lead open
+**Active milestone:** Phase 4F controlled one-Group validation — joined-target lead open
 
 ## Summary
 
 The local Phase 4 operator release is implemented and verified.
 
-The controlled APP one-Group and ten-Group gates still require an operator session and target.
+The controlled APP one-Group and ten-Group gates still require one joined accessible target.
 
 ## Completed implementation
 
@@ -81,16 +81,13 @@ The branch is nine commits ahead of `origin/main`. No release commit was pushed.
 
 ## Current external state
 
-- The default scanner root has no ready encrypted session profile.
-- Guided login reaches the account two-step route but renders only a persistent loading
-  indicator. Two concurrent guided-login processes were stopped. No session envelope,
-  discovery, membership change, capture, or export was created.
-- The active runtime lead is `blocked_external_account_checkpoint`. The planned resolution is
-  a normal Chrome attachment flow for first login, followed by automated reuse of its scanner-
-  owned profile.
-- No controlled target or operator TOML file is present.
-- Chrome currently has active processes.
-- Browser-profile import requires Chrome to be closed first.
+- The normal-Chrome attachment workflow created a ready encrypted session profile in the
+  external scanner root. It is excluded from Git, logs, fixtures, and exports.
+- Root ran protected live discovery using the selected keyword-and-location bundle. Every
+  returned candidate displayed a Join control, so the joined-only target contract stopped
+  before selection, capture, export, replay, or membership change.
+- The redacted session metadata and private discovery raw capture remain only in the external
+  scanner root. No private Group URL or content is recorded here.
 
 ## New account-protection review
 
@@ -139,14 +136,12 @@ The copied `Default` profile path remains incompatible with application-bound en
 
 ## Next execution order
 
-1. Implement and verify the normal Chrome attachment session path.
-2. Complete account verification in that normal Chrome session.
-3. Prepare and classify the encrypted session.
-4. Run and verify the controlled one-Group workflow.
-5. Record the Phase 4F receipt.
-6. Run and verify the controlled ten-Group workflow.
-7. Refresh the Phase 4 report and session state.
-8. Commit the final verified evidence.
+1. Select one already-joined accessible Group through the ready encrypted session.
+2. Run and verify the controlled one-Group workflow.
+3. Record the Phase 4F receipt.
+4. Run and verify the controlled ten-Group workflow.
+5. Refresh the Phase 4 report and session state.
+6. Commit the final verified evidence.
 
 ## Current release decision
 
