@@ -17,6 +17,7 @@
 - Phase 4 root integration: `8568625`.
 - Phase 4 resume correction: `98c515a`.
 - Phase 4 operator receipt and browser defaults: `9a6ec4f`.
+- Phase 4F join/replay/receipt hardening: `330f66f`, `ac07988`, `777f2b1`.
 - Active milestone: Phase 4F, controlled one-Group validation.
 - Product expansion remains deferred until the operator working-release gate passes.
 
@@ -112,8 +113,8 @@ uv run ty check
 uv run pytest
 ```
 
-- Final tests: 174 passed.
-- Coverage: 81.58%.
+- Final tests: 217 passed.
+- Coverage: 80.67%.
 - Tracked-file secret scan: zero findings.
 - External fixture run, replay, batch, batch resume, and comparison commands passed.
 
@@ -121,8 +122,10 @@ uv run pytest
 
 - The normal-Chrome attachment workflow produced a ready encrypted session in the external
   default session root. The session material remains outside the repository.
-- The protected live discovery attempt returned no joined accessible Group. Search results
-  with Join controls were excluded before selection, capture, or any membership action.
+- The protected live discovery attempt returned an unsupported empty candidate layout.
+  Raw discovery evidence was persisted outside Git; selection, membership action, capture,
+  export, and replay did not run. A redacted external discovery-stop receipt records the
+  `unsupported_discovery_layout` stop reason and receipt hash only.
 - The controlled APP one-Group receipt remains open.
 - The controlled ten-Group run must wait for the one-Group gate.
 

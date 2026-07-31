@@ -309,3 +309,18 @@ The screenshot itself remains outside the repository. No verification URL, code,
 - Phase 4F remains open pending one already-joined, accessible Group. Phase 4G remains
   gated by that receipt.
 
+## Phase 4F protected discovery stop — 2026-07-31
+
+Root completed the current protected operator-discovery attempt using the encrypted external session and a visible browser.
+
+- Preflight: all nine `pgscan doctor` checks passed.
+- Session health: `ready` with authenticated-route evidence.
+- Limits: one worker, one active Group, 10–20 second navigation pacing, 30/120 second retry schedule, and a 30-Post ceiling.
+- Discovery raw capture was persisted outside Git before parsing.
+- The rendered discovery page had no supported Group-candidate layout. The run stopped before target selection, membership action, Group capture, export, or replay.
+- A redacted external operator-discovery receipt was written with state `failed`, stop reason `unsupported_discovery_layout`, one raw-capture entry, a profile hash, and no membership-transition telemetry.
+- Receipt SHA-256: `9498def58920705f33bbfea7f5429d09a10dfe9ae87181b19b92947b4624659b`.
+- No session value, raw HTML, query value, target URL, or account content was committed.
+
+The one-Group completion gate remains open. Phase 4G remains gated.
+
