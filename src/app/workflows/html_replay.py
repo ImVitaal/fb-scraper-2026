@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +42,29 @@ class StoredHtmlReplayWorkflow:
                 if profile is None:
                     raise ValueError(f"replay session profile is missing: {live_run.profile_id}")
                 session_class = str(profile["session_class"])
+                transition_raws = database.connection.execute(
+                    """
+                    SELECT
+                        transition.state,
+                        discovery.capture_id AS discovery_capture_id,
+                        discovery.sha256 AS discovery_sha256,
+                        discovery.storage_path AS discovery_storage_path,
+                        discovery.byte_count AS discovery_byte_count,
+                        confirmation.capture_id AS confirmation_capture_id,
+                        confirmation.sha256 AS confirmation_sha256,
+                        confirmation.storage_path AS confirmation_storage_path,
+                        confirmation.byte_count AS confirmation_byte_count
+                    FROM membership_transitions AS transition
+                    JOIN candidate_hits AS hit ON hit.hit_id = transition.candidate_hit_id
+                    LEFT JOIN raw_captures AS discovery ON discovery.capture_id = hit.raw_capture_id
+                    LEFT JOIN raw_captures AS confirmation
+                      ON confirmation.capture_id = transition.confirmation_capture_id
+                    WHERE transition.campaign_id = ?
+                    ORDER BY transition.planned_at DESC
+                    LIMIT 1
+                    """,
+                    (live_run.campaign_id,),
+                ).fetchone()
                 pages = database.connection.execute(
                     """
                     SELECT
@@ -59,6 +83,8 @@ class StoredHtmlReplayWorkflow:
                     """,
                     (job_id,),
                 ).fetchall()
+            if transition_raws is not None:
+                self._verify_membership_transition_raws(transition_raws)
             if not pages:
                 raise RawCaptureIntegrityError(f"no checkpointed HTML captures: {job_id}")
             group: GroupRecord | None = None
@@ -124,3 +150,24 @@ class StoredHtmlReplayWorkflow:
         measurement = timer.stop()
         self.delivery._write_measurement("replay", job_id, group, posts, comments, measurement)
         return result
+
+    def _verify_membership_transition_raws(self, row: sqlite3.Row) -> None:
+        """Verify raw discovery and confirmation evidence before replaying a joined Group."""
+        if str(row["state"]) != "joined":
+            raise RawCaptureIntegrityError("membership transition was not confirmed")
+        for name in ("discovery", "confirmation"):
+            capture_id = row[f"{name}_capture_id"]
+            sha256 = row[f"{name}_sha256"]
+            storage_path = row[f"{name}_storage_path"]
+            if capture_id is None or sha256 is None or storage_path is None:
+                raise RawCaptureIntegrityError(f"membership {name} raw capture is missing")
+            capture = str(capture_id)
+            storage = str(storage_path)
+            prefix = f"{capture}."
+            if not storage.startswith(prefix) or not storage.endswith(".gz"):
+                raise RawCaptureIntegrityError(f"membership {name} storage key is invalid")
+            suffix = storage[len(capture) : -3]
+            raw_html = self.raw_store.read(capture, str(sha256), suffix=suffix)
+            byte_count = row[f"{name}_byte_count"]
+            if byte_count is not None and len(raw_html) != int(byte_count):
+                raise RawCaptureIntegrityError(f"membership {name} byte count mismatch")

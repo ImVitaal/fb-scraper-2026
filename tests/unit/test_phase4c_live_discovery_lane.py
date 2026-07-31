@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from app.discovery.live import AppDiscoveryParser, DiscoveryMode, SessionDiscoveryAdapter
+from app.discovery.live import (
+    AppDiscoveryParser,
+    DiscoveryMode,
+    MembershipState,
+    SessionDiscoveryAdapter,
+)
 from app.discovery.parser import UnsupportedDiscoveryLayoutError
 
 FIXTURE = Path(__file__).parents[1] / "fixtures" / "app_operator_redacted" / "discovery.html"
@@ -72,7 +77,7 @@ def test_fixture_mode_is_explicit_and_live_layout_failures_return_no_candidates(
         )
 
 
-def test_live_discovery_reports_joined_group_prerequisite() -> None:
+def test_live_discovery_surfaces_membership_preparation_candidates() -> None:
     html = b"""
     <main role="main"><article>
       <a href="https://app.invalid/groups/9400001/">Garden Community Bristol</a>
@@ -80,16 +85,15 @@ def test_live_discovery_reports_joined_group_prerequisite() -> None:
     </article></main>
     """
 
-    with pytest.raises(
-        UnsupportedDiscoveryLayoutError,
-        match="no joined Group matches keyword and location",
-    ):
-        AppDiscoveryParser().parse(
-            html,
-            keyword="garden",
-            location="Bristol",
-            source_url="https://app.invalid/groups/search/groups/",
-        )
+    result = AppDiscoveryParser().parse(
+        html,
+        keyword="garden",
+        location="Bristol",
+        source_url="https://app.invalid/groups/search/groups/",
+    )
+
+    assert result.joined_candidates == ()
+    assert result.membership_preparation_candidates[0].membership is MembershipState.JOIN_AVAILABLE
 
 
 def test_discovery_modes_reject_implicit_or_mixed_transports() -> None:

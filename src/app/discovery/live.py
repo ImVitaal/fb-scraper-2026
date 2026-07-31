@@ -17,6 +17,7 @@ from app.capture import BrowserStateError
 from app.discovery.parser import (
     DiscoveryCandidate,
     DiscoveryResult,
+    MembershipState,
     UnsupportedDiscoveryLayoutError,
 )
 
@@ -268,9 +269,10 @@ class AppDiscoveryParser:
         keyword = SessionDiscoveryAdapter._query(keyword, "keyword")
         location = SessionDiscoveryAdapter._query(location, "location")
         soup = BeautifulSoup(raw_html, "lxml")
-        found: dict[str, tuple[str, str, tuple[str, ...], float, float, int | None]] = {}
-        candidate_links_seen = 0
-        join_controls_seen = 0
+        found: dict[
+            str,
+            tuple[str, str, tuple[str, ...], float, float, int | None, MembershipState],
+        ] = {}
         for link in soup.select("main a[href*='/groups/']"):
             if not isinstance(link, Tag):
                 continue
@@ -279,7 +281,6 @@ class AppDiscoveryParser:
             match = _GROUP_PATH.fullmatch(parts.path.rstrip("/"))
             if match is None:
                 continue
-            candidate_links_seen += 1
             group_id = match.group(1)
             canonical_url = urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
             name = link.get_text(" ", strip=True)
@@ -287,13 +288,7 @@ class AppDiscoveryParser:
                 raise UnsupportedDiscoveryLayoutError("Group candidate name is missing")
             container = link.find_parent(attrs={"role": ("listitem", "article")}) or link.parent
             visible = container.get_text(" ", strip=True) if isinstance(container, Tag) else name
-            if isinstance(container, Tag) and any(
-                button.get_text(" ", strip=True).casefold() == "join"
-                or str(button.get("aria-label", "")).casefold().startswith("join group")
-                for button in container.select("button")
-            ):
-                join_controls_seen += 1
-                continue
+            membership = self._membership_state(container)
             keyword_score = self._token_score(keyword, visible)
             location_score = self._token_score(location, visible)
             activity_match = _POSTS_PER_DAY.search(visible)
@@ -306,7 +301,15 @@ class AppDiscoveryParser:
                 )
                 if score > 0
             )
-            candidate = (canonical_url, name, evidence, keyword_score, location_score, activity)
+            candidate = (
+                canonical_url,
+                name,
+                evidence,
+                keyword_score,
+                location_score,
+                activity,
+                membership,
+            )
             previous = found.get(group_id)
             if previous is not None and previous[0] != candidate[0]:
                 raise UnsupportedDiscoveryLayoutError(
@@ -315,11 +318,6 @@ class AppDiscoveryParser:
             if previous is None or len(name) < len(previous[1]):
                 found[group_id] = candidate
         if not found:
-            if candidate_links_seen and join_controls_seen == candidate_links_seen:
-                raise UnsupportedDiscoveryLayoutError(
-                    "no joined Group matches keyword and location; "
-                    "membership preparation is required before collection"
-                )
             raise UnsupportedDiscoveryLayoutError("supported Group candidates are missing")
 
         ordered = sorted(
@@ -341,10 +339,31 @@ class AppDiscoveryParser:
                 rank=rank,
                 matching_evidence=value[2],
                 activity_posts_per_day=value[5],
+                membership=value[6],
             )
             for rank, (group_id, value) in enumerate(ordered, start=1)
         )
         return DiscoveryResult(keyword=keyword, location=location, candidates=candidates)
+
+    @staticmethod
+    def _membership_state(container: Tag | None) -> MembershipState:
+        """Classify visible membership controls without initiating any action."""
+        if not isinstance(container, Tag):
+            return MembershipState.JOINED
+        controls = " ".join(
+            " ".join(
+                (
+                    button.get_text(" ", strip=True),
+                    str(button.get("aria-label", "")),
+                )
+            ).casefold()
+            for button in container.select("button")
+        )
+        if "requested" in controls or "cancel request" in controls:
+            return MembershipState.JOIN_REQUESTED
+        if "join" in controls:
+            return MembershipState.JOIN_AVAILABLE
+        return MembershipState.JOINED
 
     @staticmethod
     def _required_href(tag: Tag) -> str:

@@ -29,11 +29,14 @@ from app.configuration import (
 from app.contracts.models import JobState
 from app.discovery import (
     DiscoveryMode,
+    MembershipJoinAdapter,
+    MembershipState,
     SessionDiscoveryAdapter,
     SessionDiscoveryFixtureAdapter,
 )
 from app.discovery.live import DiscoveryPage
 from app.preflight import run_preflight
+from app.protection_join import JoinActionGuard, JoinProtectionError
 from app.retention import RetentionService
 from app.session import (
     NormalChromeAttachmentFailure,
@@ -48,7 +51,7 @@ from app.session import (
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
 from app.storage.repositories import JobRepository, RawCaptureMetadataRepository
-from app.targets import TargetPreparationService
+from app.targets import TargetCampaign, TargetPreparationService
 from app.workflows import BatchFixtureWorkflow, FixtureComparisonWorkflow, FixtureWorkflow
 from app.workflows.html_replay import StoredHtmlReplayWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
@@ -168,6 +171,7 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
                 raw_root=configuration.raw_root,
                 raw_captures=RawCaptureMetadataRepository(database.connection),
                 protection=configuration.protection,
+                headless=configuration.headless,
                 protection_sink=discovery_protection,
             )
         except BrowserStateError as error:
@@ -223,6 +227,7 @@ def _prepare_target(
     raw_root: Path,
     raw_captures: RawCaptureMetadataRepository,
     protection: OperatorProtectionConfiguration | None = None,
+    headless: bool = False,
     protection_sink: dict[str, object] | None = None,
 ):
     """Prepare and select exactly one configured Group."""
@@ -247,7 +252,7 @@ def _prepare_target(
         assert configuration.keyword is not None
         assert configuration.location is not None
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(headless=headless)
             try:
                 context = browser.new_context(storage_state=configuration_state(state))
                 try:
@@ -299,6 +304,83 @@ def _prepare_target(
             source_url=captured.source_url,
             raw_capture_id=capture_id,
         )
+        if configuration.method == "live_join" and not campaign.candidates:
+            candidate = _resolve_join_candidate(
+                campaign.membership_preparation_candidates,
+                configuration.select or "lowest-volume",
+                keyword=configuration.keyword,
+                location=configuration.location,
+            )
+            guard = JoinActionGuard(attempted_group_ids=targets.attempted_join_group_ids())
+            try:
+                action = guard.reserve(
+                    candidate.group_id,
+                    matches_keyword=True,
+                    matches_location=True,
+                )
+            except JoinProtectionError as error:
+                raise BrowserStateError("join_guard", str(error)) from error
+            join_telemetry: dict[str, object] = {
+                "action_attempts": action.ordinal,
+                "action": "join_requested",
+                "candidate_url_sha256": sha256(candidate.canonical_url.encode()).hexdigest(),
+                "discovery_query_sha256": sha256(
+                    f"{configuration.keyword}\x00{configuration.location}".encode()
+                ).hexdigest(),
+                "discovery_raw_sha256": capture_id,
+                "membership_before": candidate.membership.value,
+                "pacing_delay_seconds": random.uniform(*action.pacing_delay_seconds),
+                "retry_count": 0,
+                "retry_waits_seconds": [],
+            }
+            targets.plan_join(
+                campaign.campaign_id, candidate.candidate_id, telemetry=join_telemetry
+            )
+            try:
+                outcome, confirmation_capture_id = _join_keyword_candidate(
+                    state,
+                    candidate.canonical_url,
+                    headless=False,
+                    navigation_delay_seconds=(
+                        random.uniform(*protection.navigation_delay_seconds)
+                        if protection is not None
+                        else 10.0
+                    ),
+                    action_delay_seconds=float(join_telemetry["pacing_delay_seconds"]),
+                    raw_root=raw_root,
+                    raw_captures=raw_captures,
+                )
+            except BrowserStateError as error:
+                join_telemetry["stop_reason"] = error.failure_class
+                targets.complete_join(
+                    campaign.campaign_id,
+                    candidate.candidate_id,
+                    state="stopped",
+                    confirmation_capture_id=None,
+                    telemetry=join_telemetry,
+                )
+                if protection_sink is not None:
+                    protection_sink["membership_transition"] = join_telemetry
+                raise
+            join_telemetry["membership_after"] = outcome.state
+            join_telemetry["confirmation_raw_sha256"] = sha256(
+                outcome.confirmation_html
+            ).hexdigest()
+            join_telemetry["transition_state"] = outcome.state
+            confirmed_candidate = targets.complete_join(
+                campaign.campaign_id,
+                candidate.candidate_id,
+                state=outcome.state,
+                confirmation_capture_id=confirmation_capture_id,
+                telemetry=join_telemetry,
+            )
+            if outcome.state != "joined":
+                raise BrowserStateError(
+                    "membership_pending", "membership was not confirmed after Join"
+                )
+            campaign = TargetCampaign(campaign.campaign_id, (confirmed_candidate,))
+            if protection_sink is not None:
+                protection_sink["membership_transition"] = join_telemetry
     assert configuration.select is not None
     candidate_id = _resolve_candidate(campaign.candidates, configuration.select)
     return targets.select(campaign.campaign_id, candidate_id)
@@ -332,6 +414,77 @@ def _resolve_candidate(candidates, selector: str) -> str:
     if len(matches) != 1:
         raise ValueError("target selection must match exactly one candidate id, Group id, or rank")
     return matches[0].candidate_id
+
+
+def _resolve_join_candidate(candidates, selector: str, *, keyword: str, location: str):
+    """Choose one joinable Group that visibly matches both discovery terms."""
+    del keyword, location  # The raw discovery parser already established relevance.
+    matching = [
+        candidate
+        for candidate in candidates
+        if candidate.membership is MembershipState.JOIN_AVAILABLE
+    ]
+    if not matching:
+        raise BrowserStateError(
+            "join_match_missing", "no joinable Group matches the keyword and location"
+        )
+    candidate_id = _resolve_candidate(matching, selector)
+    return next(candidate for candidate in matching if candidate.candidate_id == candidate_id)
+
+
+def _join_keyword_candidate(
+    state: Mapping[str, object],
+    target_url: str,
+    *,
+    headless: bool,
+    navigation_delay_seconds: float,
+    action_delay_seconds: float,
+    raw_root: Path,
+    raw_captures: RawCaptureMetadataRepository,
+):
+    """Persist raw membership evidence before and after the one visible Join action."""
+    store = GzipRawCaptureStore(raw_root)
+
+    def persist(raw_html: bytes, suffix: str) -> str:
+        capture_id = str(uuid4())
+        stored = store.write(capture_id, raw_html, suffix=suffix)
+        raw_captures.add(
+            capture_id=capture_id,
+            sha256=stored.sha256,
+            source_url=target_url,
+            collected_at=datetime.now(UTC),
+            storage_path=stored.path.name,
+            byte_count=stored.byte_count,
+        )
+        return capture_id
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch(headless=headless)
+        try:
+            context = browser.new_context(storage_state=configuration_state(state))
+            try:
+                page = context.new_page()
+                adapter = MembershipJoinAdapter(
+                    navigation_delay_seconds=navigation_delay_seconds,
+                    action_delay_seconds=action_delay_seconds,
+                )
+
+                def checkpoint_before_action(raw_html: bytes) -> None:
+                    persist(raw_html, ".join-before.html")
+
+                outcome = adapter.join(
+                    page,
+                    target_url,
+                    checkpoint_before_action=checkpoint_before_action,
+                )
+                confirmation_capture_id = persist(
+                    outcome.confirmation_html, ".join-confirmation.html"
+                )
+            finally:
+                context.close()
+        finally:
+            browser.close()
+    return outcome, confirmation_capture_id
 
 
 def _guided_operator_configuration(

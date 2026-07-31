@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from hashlib import sha256
@@ -94,6 +95,9 @@ class OperatorRunReceiptWriter:
                 """,
                 (run_id,),
             ).fetchone()
+            membership_transition = self._membership_transition(
+                database.connection, live.campaign_id
+            )
         if profile is None or target is None or not raw_rows:
             raise ValueError(f"operator receipt inputs are incomplete: {run_id}")
 
@@ -146,6 +150,12 @@ class OperatorRunReceiptWriter:
             "input": input_payload,
             "input_sha256": self._json_sha256(input_payload),
             "limits": asdict(limits),
+            "membership_transition": membership_transition,
+            "membership_transition_sha256": (
+                self._json_sha256(membership_transition)
+                if membership_transition is not None
+                else None
+            ),
             "metrics": metrics,
             "normalized_sha256": delivery.normalized_sha256,
             "protection": dict(protection or {}),
@@ -153,7 +163,7 @@ class OperatorRunReceiptWriter:
             "raw_set_sha256": self._json_sha256(raw_captures),
             "run_id": run_id,
             "run_type": "operator_html",
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "session_class": str(profile["session_class"]),
             "session_health": str(profile["health"]),
             "state": state.value,
@@ -243,6 +253,9 @@ class OperatorRunReceiptWriter:
                 """,
                 (run_id,),
             ).fetchone()
+            membership_transition = self._membership_transition(
+                database.connection, live.campaign_id
+            )
         if profile is None or target is None:
             raise ValueError(f"operator stop receipt inputs are incomplete: {run_id}")
         raw_captures = [
@@ -271,6 +284,12 @@ class OperatorRunReceiptWriter:
             "input": input_payload,
             "input_sha256": self._json_sha256(input_payload),
             "limits": asdict(limits),
+            "membership_transition": membership_transition,
+            "membership_transition_sha256": (
+                self._json_sha256(membership_transition)
+                if membership_transition is not None
+                else None
+            ),
             "metrics": {"replay": None, "resume": None, "run": None},
             "normalized_sha256": None,
             "protection": protected,
@@ -278,7 +297,7 @@ class OperatorRunReceiptWriter:
             "raw_set_sha256": self._json_sha256(raw_captures),
             "run_id": run_id,
             "run_type": "operator_html",
-            "schema_version": "1.0",
+            "schema_version": "1.2",
             "session_class": str(profile["session_class"]),
             "session_health": str(profile["health"]),
             "state": state.value,
@@ -304,14 +323,23 @@ class OperatorRunReceiptWriter:
         """Write redacted evidence when protected discovery stops before selection."""
         protected = dict(protection)
         protected["stop_reason"] = stop_reason
+        membership_transition = protected.pop("membership_transition", None)
+        if membership_transition is not None and not isinstance(membership_transition, dict):
+            raise ValueError("discovery membership transition must be an object")
         payload = {
             "counts": {"comments": 0, "failures": 1, "groups": 0, "posts": 0},
             "exports": {},
             "input": {"profile_sha256": self._text_sha256(profile)},
+            "membership_transition": membership_transition,
+            "membership_transition_sha256": (
+                self._json_sha256(membership_transition)
+                if membership_transition is not None
+                else None
+            ),
             "protection": protected,
             "receipt_id": receipt_id,
             "run_type": "operator_discovery",
-            "schema_version": "1.0",
+            "schema_version": "1.2",
             "state": "failed",
         }
         encoded = json.dumps(
@@ -323,6 +351,22 @@ class OperatorRunReceiptWriter:
         path = self.exports / f"{receipt_id}.operator-receipt.json"
         self._atomic_write(path, encoded)
         return OperatorRunReceipt(path, sha256(encoded).hexdigest())
+
+    @staticmethod
+    def _membership_transition(
+        connection: sqlite3.Connection, campaign_id: str
+    ) -> dict[str, object] | None:
+        row = connection.execute(
+            """
+            SELECT telemetry_json
+            FROM membership_transitions
+            WHERE campaign_id = ?
+            ORDER BY planned_at DESC
+            LIMIT 1
+            """,
+            (campaign_id,),
+        ).fetchone()
+        return json.loads(str(row["telemetry_json"])) if row is not None else None
 
     @staticmethod
     def _text_sha256(value: str) -> str:

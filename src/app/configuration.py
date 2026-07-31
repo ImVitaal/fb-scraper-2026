@@ -49,7 +49,7 @@ class FixtureRunConfiguration:
 
 
 SessionMethod = Literal["existing", "imported", "guided"]
-TargetMethod = Literal["discovery", "live_discovery", "url", "csv"]
+TargetMethod = Literal["discovery", "live_discovery", "live_join", "url", "csv"]
 
 
 @dataclass(frozen=True)
@@ -173,14 +173,17 @@ class OperatorRunConfiguration:
         expected = {
             "discovery": {"method", "fixture", "keyword", "location", "select"},
             "live_discovery": {"method", "base_url", "keyword", "location"},
+            "live_join": {"method", "base_url", "keyword", "location"},
             "url": {"method", "url"},
             "csv": {"method", "csv_file", "select"},
         }
         if method not in expected:
             raise ConfigurationError(
-                "[target].method must be discovery, live_discovery, url, or csv"
+                "[target].method must be discovery, live_discovery, live_join, url, or csv"
             )
-        allowed = expected[method] | ({"select"} if method == "live_discovery" else set())
+        allowed = expected[method] | (
+            {"select"} if method in {"live_discovery", "live_join"} else set()
+        )
         if set(values) - allowed or not expected[method].issubset(values):
             raise ConfigurationError(f"[target] has invalid fields for {method}")
         if method == "discovery":
@@ -191,9 +194,9 @@ class OperatorRunConfiguration:
                 keyword=_text(values, "keyword", "target"),
                 location=_text(values, "location", "target"),
             )
-        if method == "live_discovery":
+        if method in {"live_discovery", "live_join"}:
             return OperatorTargetConfiguration(
-                method="live_discovery",
+                method=method,
                 select=(
                     _text(values, "select", "target") if "select" in values else "lowest-volume"
                 ),

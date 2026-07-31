@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from urllib.parse import urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
@@ -10,6 +11,19 @@ from bs4 import BeautifulSoup, Tag
 
 class UnsupportedDiscoveryLayoutError(ValueError):
     """Raised when a capture lacks the versioned discovery layout anchors."""
+
+
+class MembershipState(StrEnum):
+    """Observed membership state for a discovered Group.
+
+    Only ``JOINED`` candidates may be passed to collection.  The other states
+    are retained as operator-visible preparation work so a browser workflow can
+    request membership and then repeat discovery before selection.
+    """
+
+    JOINED = "joined"
+    JOIN_AVAILABLE = "join_available"
+    JOIN_REQUESTED = "join_requested"
 
 
 @dataclass(frozen=True)
@@ -25,6 +39,7 @@ class DiscoveryCandidate:
     rank: int
     matching_evidence: tuple[str, ...] = ()
     activity_posts_per_day: int | None = None
+    membership: MembershipState = MembershipState.JOINED
 
     def as_dict(self) -> dict[str, object]:
         """Return a non-secret operator-facing representation."""
@@ -46,6 +61,24 @@ class DiscoveryResult:
             "location": self.location,
             "candidates": [candidate.as_dict() for candidate in self.candidates],
         }
+
+    @property
+    def joined_candidates(self) -> tuple[DiscoveryCandidate, ...]:
+        """Return candidates that are ready for collection."""
+        return tuple(
+            candidate
+            for candidate in self.candidates
+            if candidate.membership is MembershipState.JOINED
+        )
+
+    @property
+    def membership_preparation_candidates(self) -> tuple[DiscoveryCandidate, ...]:
+        """Return discovered candidates requiring a join or pending-request review."""
+        return tuple(
+            candidate
+            for candidate in self.candidates
+            if candidate.membership is not MembershipState.JOINED
+        )
 
 
 class DiscoveryParser:

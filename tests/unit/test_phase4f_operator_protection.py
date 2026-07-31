@@ -137,7 +137,7 @@ def test_live_discovery_defaults_to_lowest_measured_volume(tmp_path: Path) -> No
     assert _resolve_candidate(candidates, loaded.target.select) == "low"
 
 
-def test_live_discovery_excludes_join_results_and_reads_activity() -> None:
+def test_live_discovery_surfaces_join_results_and_reads_activity() -> None:
     result = AppDiscoveryParser().parse(
         b"""
         <main>
@@ -157,5 +157,7 @@ def test_live_discovery_excludes_join_results_and_reads_activity() -> None:
         source_url="https://app.invalid/groups/search/groups/",
     )
 
-    assert [candidate.group_id for candidate in result.candidates] == ["member-group"]
-    assert result.candidates[0].activity_posts_per_day == 5
+    assert [candidate.group_id for candidate in result.candidates] == ["member-group", "join-group"]
+    assert result.joined_candidates[0].group_id == "member-group"
+    assert result.membership_preparation_candidates[0].group_id == "join-group"
+    assert result.joined_candidates[0].activity_posts_per_day == 5
