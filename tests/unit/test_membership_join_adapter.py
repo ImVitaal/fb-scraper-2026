@@ -57,6 +57,11 @@ class _Page:
     def locator(self, selector: str) -> _Locator:
         return _Locator(self, selector)
 
+    def get_by_role(self, role: str, *, name: str, exact: bool) -> _Locator:
+        assert (role, name, exact) == ("button", "Join Group", True)
+        self.events.append("join-role-locator")
+        return _Locator(self, "button[role='join-group']")
+
 
 def test_join_checkpoints_before_one_visible_click() -> None:
     page = _Page()
@@ -75,6 +80,7 @@ def test_join_checkpoints_before_one_visible_click() -> None:
     assert checkpointed == [b"<html>before</html>"]
     assert page.events.index("checkpoint") < page.events.index("click")
     assert page.events.count("click") == 1
+    assert page.events.count("join-role-locator") == 2
     assert outcome.state == "joined"
     assert outcome.confirmation_html == b"<html>after</html>"
 

@@ -247,8 +247,7 @@ class TargetPreparationService:
     def attempted_join_group_ids(self) -> set[str]:
         """Return durable one-time join reservations across prior operator runs."""
         rows = self.connection.execute(
-            "SELECT DISTINCT group_id FROM membership_transitions "
-            "WHERE state IN ('planned', 'joined', 'pending')"
+            "SELECT DISTINCT group_id FROM membership_transitions"
         ).fetchall()
         return {str(row["group_id"]) for row in rows}
 

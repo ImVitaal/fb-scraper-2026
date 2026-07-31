@@ -45,7 +45,7 @@ class MembershipJoinAdapter:
         page.wait_for_timeout(self.navigation_delay_seconds * 1000)
         self._raise_if_stopped(page, stop_reason)
         before_html = page.content().encode("utf-8")
-        join_button = page.locator("button[aria-label^='Join Group']")
+        join_button = page.get_by_role("button", name="Join Group", exact=True)
         count = join_button.count()
         if count != 1:
             raise BrowserStateError("join_unavailable", "expected exactly one visible Join control")
@@ -59,7 +59,7 @@ class MembershipJoinAdapter:
         body = page.locator("body").inner_text(timeout=1_000).casefold()
         if "cancel request" in body or "requested" in body:
             state = "pending"
-        elif page.locator("button[aria-label^='Join Group']").count() == 0:
+        elif page.get_by_role("button", name="Join Group", exact=True).count() == 0:
             state = "joined"
         else:
             state = "rejected"

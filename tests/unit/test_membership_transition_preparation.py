@@ -54,3 +54,41 @@ def test_join_transition_unlocks_only_a_confirmed_candidate(tmp_path: Path) -> N
 
     assert completed.membership is MembershipState.JOINED
     assert selected.group_id == "garden"
+
+
+@pytest.mark.parametrize("state", ["rejected", "stopped"])
+def test_completed_join_identity_is_never_reused_across_campaigns(
+    tmp_path: Path, state: str
+) -> None:
+    """Every terminal join outcome keeps the Group outside later action budgets."""
+    with Database(tmp_path / "scanner.sqlite3") as database:
+        database.migrate()
+        service = TargetPreparationService(database.connection)
+        database.connection.execute(
+            """
+            INSERT INTO raw_captures(
+                capture_id, sha256, source_url, collected_at, storage_path, byte_count
+            ) VALUES ('raw', ?, 'https://app.invalid/groups/search/groups/',
+                      '2026-07-31T00:00:00+00:00', 'raw.discovery.html.gz', 1)
+            """,
+            ("a" * 64,),
+        )
+        campaign = service.add_live_discovery(
+            b"<main><article role='article'><a href='/groups/garden/'>Garden Bristol</a>"
+            b"<button aria-label='Join Group'>Join</button></article></main>",
+            keyword="garden",
+            location="Bristol",
+            source_url="https://app.invalid/groups/search/groups/",
+            raw_capture_id="raw",
+        )
+        candidate = campaign.membership_preparation_candidates[0]
+        service.plan_join(campaign.campaign_id, candidate.candidate_id, telemetry={})
+        service.complete_join(
+            campaign.campaign_id,
+            candidate.candidate_id,
+            state=state,
+            confirmation_capture_id=None,
+            telemetry={},
+        )
+
+        assert service.attempted_join_group_ids() == {"garden"}
