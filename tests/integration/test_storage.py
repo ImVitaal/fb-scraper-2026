@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -403,6 +403,12 @@ def test_capture_metadata_reports_validation_and_identity_conflicts(tmp_path: Pa
             sha256="A" * 64,
             source_url="https://example.test/capture",
             collected_at=observed_at,
+        )
+        captures.add(
+            capture_id="capture-1",
+            sha256="A" * 64,
+            source_url="https://example.test/capture",
+            collected_at=observed_at + timedelta(minutes=1),
         )
         with pytest.raises(CaptureMetadataConflict, match="conflict"):
             captures.add(

@@ -103,7 +103,8 @@ class RawCaptureMetadataRepository:
         if byte_count is not None and byte_count < 0:
             message = "byte_count must be non-negative"
             raise CaptureMetadataConflict(message)
-        expected = (normalized_sha256, source_url, _timestamp(collected_at))
+        expected = (normalized_sha256, source_url)
+        normalized_collected_at = _timestamp(collected_at)
         with self._connection:
             row = self._connection.execute(
                 """
@@ -121,13 +122,13 @@ class RawCaptureMetadataRepository:
                             capture_id, sha256, source_url, collected_at, storage_path, byte_count
                         ) VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        (capture_id, *expected, storage_path, byte_count),
+                        (capture_id, *expected, normalized_collected_at, storage_path, byte_count),
                     )
                 except sqlite3.IntegrityError as error:
                     message = f"invalid capture metadata: {capture_id}"
                     raise CaptureMetadataConflict(message) from error
             else:
-                actual = (row["sha256"], row["source_url"], row["collected_at"])
+                actual = (row["sha256"], row["source_url"])
                 if actual != expected:
                     message = f"capture metadata conflict: {capture_id}"
                     raise CaptureMetadataConflict(message)
