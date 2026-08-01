@@ -1,140 +1,86 @@
-# Private Group Scanner — session state
+# Private Group Scanner — Session State
 
-**Updated:** 2026-07-31
-**Current release:** Phase 4 local-browser release candidate
-**Active plan:** `OPERATOR_WORKING_RELEASE_PLAN.md`
+**Updated:** 2026-08-01T16:25:19Z
+**Sessions completed:** 1
+**Repository:** `C:\Users\teqhv\fb scraper`
+**Branch:** `main`
 
-## Current state
+## What happened this session
 
-- Branch: `main`.
-- Baseline before this release: `8b18b18`.
-- Phase 1 integration: `94b80fb`.
-- Phase 2 integration: `0239aef`.
-- Phase 3 integration: `96f3c6e`.
-- Phase 4A integration: `90a8a5b`.
-- Phase 4B integration: `ec3f3b1`.
-- Phase 4C integration: `5c15f56`.
-- Phase 4 root integration: `8568625`.
-- Phase 4 resume correction: `98c515a`.
-- Phase 4 operator receipt and browser defaults: `9a6ec4f`.
-- Phase 4F join/replay/receipt hardening: `330f66f`, `ac07988`, `777f2b1`.
-- Active milestone: Phase 4F, controlled one-Group validation.
-- Product expansion remains deferred until the operator working-release gate passes.
+T1 current-layout discovery was implemented and integrated in local commit `22772a4`. The parser now supports the observed redacted `[role="main"]` layout with semantic article/listitem containers and role-button membership controls; the live discovery route was corrected to `/groups/?q=...`. Focused discovery/protection/receipt tests passed, Ruff and `ty` passed, and the root full suite passed with 218 tests and 80.66% coverage.
 
-## Delivered
+T2 was activated on `22772a4` and reached the required Phase 4F lock gate. Doctor passed 9/9, session health was ready, and normal-Chrome attach/finalize produced a ready encrypted session. A second attach attempt found scanner-owned Chrome processes holding the scanner profile lock, so T2 stopped before discovery or collection and recorded a redacted external stop receipt.
 
-### Phase 1
+## Current counts
 
-- Imported, guided, and existing encrypted session workflows.
-- Session-gated keyword-and-location discovery.
-- Direct URL and CSV target fallbacks.
-- One selected Group.
-- Multi-page raw-first capture.
-- Durable checkpoint before each next-page fetch.
-- Interruption and resume with matching identifiers.
-- Offline stored-HTML replay.
-- CSV, JSON, standalone SQLite, manifest, and Markdown outputs.
-- Run, resume, replay, retention, and quality receipts.
-- Guided and strict TOML operator modes.
+- `src/`: 91 files.
+- `tests/`: 113 files.
+- Root full suite: 218 passed; coverage 80.66%.
+- `pgscan doctor`: 9/9 passed during T2.
+- Tracked-file secret findings: not rerun after the T1 checkpoint; prior verified baseline was zero.
+- Git: `main` is one local commit ahead of `origin/main` at `22772a4`.
 
-### Phase 2
+## Workstream status
 
-- Ten synthetic Group fixtures.
-- Sequential one-through-ten Group collection.
-- Per-Group terminal states.
-- Failure isolation.
-- Incomplete-Group resume with completed-Group preservation.
-- Aggregate resource and completeness-adjusted throughput report.
-- Worker limit retained at one because concurrency lacked improvement evidence.
+| # | Workstream | Status | Next step |
+|---|---|---|---|
+| 1 | T1 current-layout discovery | Accepted and integrated as `22772a4` | Preserve the focused regression and route evidence. |
+| 2 | T2 controlled one-Group Phase 4F proof | **REVISE — stopped at scanner profile lock gate** | Repair attach/finalize lifecycle, then reactivate T2 from a clean external root. |
+| 3 | T3 sequential ten-Group Phase 4G workflow | Gated; preflight complete in thread `019fbe0c-bcf0-7751-96de-0dcdcf132f0f` | Activate only after an accepted Phase 4F receipt. |
+| 4 | T4 independent release verification | Gated; orientation/matrix complete in thread `019fbe0c-bdb2-7861-90de-3852ab6c9873` | Activate only after the Phase 4G candidate is integrated. |
+| 5 | Manager integration and release records | Active blocker investigation | Fix the scanner-owned Chrome lifecycle, rerun T2, then update the phase log and completion report at the ship gate. |
 
-### Phase 3
+## Pending work (priority order)
 
-- One direct JSON result fixture.
-- One direct CSV result fixture.
-- Completeness, duplicate, duration, throughput, and cost calculation.
-- Input and output hashes.
-- Unsupported-field recording.
-- Separate measured-value and conclusion sections.
+1. Inspect and repair `src\app\session\browser.py` so scanner-owned normal Chrome is tracked and fully released after `finalize-chrome`; ensure a fresh attach starts with no held profile lock. Add failing lifecycle coverage first, keep session material outside Git, and run the focused session tests plus Ruff and `ty`.
+2. Independently verify the lifecycle repair in the root checkout, then reactivate T2 thread `019fbe0c-8a4e-7870-b240-1637a0f21c38` on the new local commit. T2 must verify zero scanner-owned Chrome processes and clean profile lock state before doctor/health, attach/finalize, supported storage-state import, discovery, capture, interruption/resume, replay, five exports, and parity receipts.
+3. Accept or revise Phase 4F from redacted APP evidence. Keep T3 gated until the one-Group receipt is accepted; then align T3 to the accepted main and implement only the sequential worker-limit-one lane.
+4. Activate T4 only after the integrated Phase 4G candidate exists. Run the full independent gate, distinguish fixture evidence from APP evidence, update only `SESSION_STATE.md`, `docs\phase-4\phase-4-log.md`, and `docs\phase-4\phase-4-completion-report.md`, then commit and push `main`.
 
-### Phase 4A through 4E
+## Constraints
 
-- Native Windows doctor checks pass.
-- Session health classifies ready, expired, challenged, restricted, and invalid.
-- Guided login, storage-state import, and local Chromium-profile import use encrypted envelopes.
-- One Playwright context persists across bounded capture interactions.
-- Opaque checkpoints precede each browser action.
-- APP extraction records Group, Post, top-level Comment, media, provenance, and null reasons.
-- Live keyword-and-location discovery stores raw bytes before parsing.
-- CLI capture and resume use multi-page browser capture.
-- CLI replay routes live runs through integrity-checked stored HTML.
-- Inspect reports pages, interactions, counts, health, failure class, and retries.
-- Live success writes CSV, JSON, standalone SQLite, manifest, Markdown, and a stable operator receipt.
-- Operator capture is visible by default; headless mode requires an explicit option.
-- Browser import copies a selected closed profile and preserves its source.
-- Local real-Chromium imported and guided workflows pass without replacing `_capture_selected`.
-- A real-Chromium interruption resumes with matching identifiers.
+- Native Windows; Python 3.12+; use `uv`, Ruff, `ty`, and Pytest.
+- Keep discovery, authentication, transport, capture, parsing, storage, and export contracts separate.
+- Store raw captures before parsing; preserve checkpoint-before-pagination and idempotent resume behavior.
+- Keep encrypted session envelopes, browser profiles, private raw HTML, operator configs, outputs, and receipts outside Git.
+- Never store passwords or expose cookies, tokens, private URLs, or private content in fixtures, logs, reports, exports, or task messages.
+- Select already joined accessible Groups automatically; do not add membership actions or social actions.
+- Stop on login/checkpoint/CAPTCHA/lock/restriction/401/403/429 or unsupported layouts. Keep one worker and preserve the existing account-protection pacing and cooldown controls.
+- Treat synthetic/local evidence separately from authenticated APP evidence. Do not claim Phase 4F or 4G completion from fixture results.
+- Root/manager owns prioritization, integration, phase records, final commit, push, and worker archival.
 
-### Phase 4F account-protection gate
+## Decisions made this session
 
-- One active operator capture is enforced through an exclusive local lock.
-- A successful different-Group capture enforces the 900-second pause.
-- Navigation, scrolling, expansion, and retry delays use protected configurable bounds.
-- Live discovery and Group capture stop on account warnings and HTTP 401, 403, or 429.
-- The first controlled Group has a hard 30-Post normalized and interaction ceiling.
-- Later runs omit known Posts from normalization and record their skip count.
-- Operator receipts record pacing, retries, inter-Group waits, skips, and stop reasons.
-- Automatic discovery selects the lowest measured activity among joined results.
+- Use four independent Luna High Codex threads with disjoint ownership: T1 discovery, T2 one-Group proof, T3 ten-Group workflow, and T4 release verification.
+- T1's accepted parser fix uses the observed semantic rendered layout and keeps unsupported-layout handling fail-closed. The manager-owned navigation correction uses the authenticated joined-Groups route `/groups/?q=...`.
+- T2's profile-lock stop is valid evidence and ends the attempt. Do not repeat live actions until the scanner-owned Chrome lifecycle is repaired and independently checked.
+- T3 and T4 remain dependency-gated rather than speculatively editing or presenting a release verdict.
 
-### Phase 4F session-review fixes
+## Problems / blockers
 
-- Live discovery reports a specific joined-Group membership prerequisite.
-- Search results with Join controls never become collection candidates.
-- Copied profiles with application-bound encryption receive a specific diagnostic.
-- Successful operator receipts reconcile expected and exported visible top-level Comments.
-- Operator receipt schema `1.1` records the Comment reconciliation counts and result.
+- T2's first attach/finalize path left scanner-owned Chrome processes holding `C:\Users\teqhv\AppData\Local\private-group-scanner\sessions\browser-profiles\operator\lockfile`. Cleanup left zero scanner-owned Chrome processes, but the supported import/discovery/capture path remains unproven.
+- Root inspection found `launch_normal_chrome_attachment` starts a `Popen` process without persisting ownership, while `collect_normal_chrome_attachment_state` closes the CDP handle but has no scanner-owned process cleanup contract. No lifecycle source fix has been made yet.
+- T2 redacted stop receipt: `C:\Users\teqhv\AppData\Local\private-group-scanner\t2-phase4f-stop-20260801.json`; SHA-256 `789d40266a0a1186daa987fb414f37b659c4d67ad914ae3e2e9224667a21c6a21`.
+- T1's detached worktree full-suite run reported 217 passed plus one raw-root-path validation failure caused by the worktree path. The manager checkout independently passed all 218 tests.
+- The working tree is clean before this handoff; writing this state file is the expected next uncommitted change. `main` has not been pushed after `22772a4`.
 
-### Phase 4F parity verification — 2026-07-30
+## Files changed this session
 
-- The 30-Post ceiling now applies across the complete rendered capture, not to each page.
-- Partial-stop receipts hash every durable Group, Post, and Comment identifier present at stop time.
-- Root reviewed the protection, receipt, and session-runtime handbacks. No agent committed changes.
-- `pgscan doctor` passed all nine checks.
-- Ruff format and lint passed. `ty` passed. Full suite: 178 passed with 81.94% coverage.
-- Tracked-file secret scan: zero findings.
-- Guided login now creates a scanner-owned persistent Chrome profile under the external
-  session root. Later capture and resume reuse that profile without manual collection.
+- `src\app\discovery\live.py` — current rendered-layout selectors, container parsing, role-button membership recognition, and joined-Groups navigation route.
+- `tests\fixtures\app_operator_redacted\t1_current_rendered_discovery.html` — synthetic/redacted current-layout fixture.
+- `tests\unit\test_phase4_t1_joined_groups_navigation.py` — T1 navigation, raw capture, identifier, membership, evidence, and activity regression coverage.
+- `tests\unit\test_phase4c_live_discovery_lane.py` — expected current discovery route.
+- `tests\integration\test_phase4_root_local_browser_vertical.py` — local browser fixture server accepts the current discovery route.
+- `SESSION_STATE.md` — this handoff snapshot.
 
-## Verification
+## Resume commands
 
 ```powershell
+Set-Location 'C:\Users\teqhv\fb scraper'
+git status --short --branch
+git log -1 --oneline
 uv run ruff format --check .
 uv run ruff check .
 uv run ty check
 uv run pytest
 ```
-
-- Final tests: 217 passed.
-- Coverage: 80.67%.
-- Tracked-file secret scan: zero findings.
-- External fixture run, replay, batch, batch resume, and comparison commands passed.
-
-## Current operator gaps
-
-- The normal-Chrome attachment workflow produced a ready encrypted session in the external
-  default session root. The session material remains outside the repository.
-- The protected live discovery attempt returned an unsupported empty candidate layout.
-  Raw discovery evidence was persisted outside Git; selection, membership action, capture,
-  export, and replay did not run. A redacted external discovery-stop receipt records the
-  `unsupported_discovery_layout` stop reason and receipt hash only.
-- The controlled APP one-Group receipt remains open.
-- The controlled ten-Group run must wait for the one-Group gate.
-
-## Limits
-
-- Run controlled operator browser-session validation in its target Windows environment.
-- Keep private raw captures and session material outside Git.
-- Do not treat synthetic comparison results as external product claims.
-- Keep product expansion deferred.
-
-See `OPERATOR_WORKING_RELEASE_PLAN.md`, `docs/test-release-completion-receipt.md`,
-and `docs/phase-4/phase-4-completion-report.md`.
