@@ -56,7 +56,7 @@ class AppGroupExtractionAdapter:
             raise ValueError("APP extraction requires an imported or guided_login session class")
 
         soup = BeautifulSoup(raw_html, "lxml")
-        group_link, group_id, group_url = self._group_anchor(soup, source_url)
+        group_link, group_id, group_url, used_source_route = self._group_anchor(soup, source_url)
         group_name = group_link.get_text(" ", strip=True)
         if not group_name:
             raise UnsupportedLayoutError("Group name is missing")
@@ -73,6 +73,13 @@ class AppGroupExtractionAdapter:
             "member_count": member_count,
             "observed_at": observed_at,
         }
+        group_selector = (
+            "css=h1::text|source_url=group_path"
+            if used_source_route
+            else "css=main h1 a[href*='/groups/']"
+        )
+        group_id_transform = "source_url_path" if used_source_route else "canonical_link_segment"
+        group_url_transform = "source_url_path" if used_source_route else "canonical_url"
         group = GroupRecord.model_validate(
             self._evidence(
                 group_data,
@@ -82,12 +89,9 @@ class AppGroupExtractionAdapter:
                 session_class=parsed_session_class,
                 observed_at=observed_at,
                 paths={
-                    "group_id": ("css=main h1 a[href*='/groups/']", "canonical_link_segment"),
-                    "canonical_url": (
-                        "css=main h1 a[href*='/groups/']@href",
-                        "canonical_url",
-                    ),
-                    "name": ("css=main h1 a[href*='/groups/']::text", None),
+                    "group_id": (group_selector, group_id_transform),
+                    "canonical_url": (f"{group_selector}@href", group_url_transform),
+                    "name": (group_selector, None),
                     "privacy": ("derived=session_visible_group", "visibility_classification"),
                     "membership_state": (
                         "derived=session_visible_group",
@@ -183,12 +187,12 @@ class AppGroupExtractionAdapter:
                 self._add_unique(seen_comments, comment_id, comment, "Comment")
                 if comment not in comments:
                     comments.append(comment)
-        if not posts and not self._has_post_anchor(soup):
+        if not posts and not self._has_post_anchor(soup) and not used_source_route:
             raise UnsupportedLayoutError("supported Post canonical anchors are missing")
         return group, posts, comments
 
     @classmethod
-    def _group_anchor(cls, soup: BeautifulSoup, source_url: str) -> tuple[Tag, str, str]:
+    def _group_anchor(cls, soup: BeautifulSoup, source_url: str) -> tuple[Tag, str, str, bool]:
         matches: list[tuple[Tag, str, str]] = []
         for link in soup.select("main h1 a[href], main a[href]"):
             if not isinstance(link, Tag):
@@ -197,17 +201,36 @@ class AppGroupExtractionAdapter:
             match = _GROUP_PATH.fullmatch(urlsplit(canonical).path)
             if match:
                 matches.append((link, match.group(1), canonical))
+        source_canonical = cls._canonical_url(source_url, source_url)
+        source_match = _GROUP_PATH.fullmatch(urlsplit(source_canonical).path)
+        if source_match:
+            source_group_id = source_match.group(1)
+            source_matches = [item for item in matches if item[1] == source_group_id]
+            source_identities = {(group_id, canonical) for _, group_id, canonical in source_matches}
+            if len(source_identities) == 1:
+                group_id, canonical = source_identities.pop()
+                link = next(item for item, item_id, _ in source_matches if item_id == group_id)
+                return link, group_id, canonical, False
+            if not source_matches:
+                headings = soup.select("h1")
+                if (
+                    len(headings) == 1
+                    and isinstance(headings[0], Tag)
+                    and not headings[0].select("a[href]")
+                    and headings[0].get_text(" ", strip=True)
+                ):
+                    return headings[0], source_group_id, source_canonical, True
         identities = {(group_id, canonical) for _, group_id, canonical in matches}
         if len(identities) != 1:
             raise UnsupportedLayoutError("supported group canonical link is missing or ambiguous")
         group_id, canonical = identities.pop()
         link = next(item for item, item_id, _ in matches if item_id == group_id)
-        return link, group_id, canonical
+        return link, group_id, canonical, False
 
     @classmethod
     def _post_anchors(cls, soup: BeautifulSoup, source_url: str) -> list[tuple[Tag, str, str, str]]:
         values: list[tuple[Tag, str, str, str]] = []
-        for article in soup.select("article[role='article']"):
+        for article in soup.select("[role='article']"):
             if not isinstance(article, Tag):
                 continue
             link_match: tuple[str, str, str] | None = None

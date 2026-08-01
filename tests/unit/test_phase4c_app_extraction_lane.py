@@ -58,6 +58,67 @@ def test_app_adapter_rejects_layout_without_canonical_group_and_post_anchors() -
         )
 
 
+def test_app_adapter_uses_group_route_and_heading_when_navigation_has_no_group_link() -> None:
+    html = b"""
+    <div role="main">
+      <div role="main">
+        <h1><span>REDACTED GROUP</span></h1>
+        <nav>
+          <a href="/groups/">Groups</a>
+          <a href="/groups/other-group/">Other group</a>
+        </nav>
+        <div role="feed">
+          <div role="article">
+            <a href="/groups/9100001/posts/9200012/">Permalink</a>
+            <time datetime="2026-07-29T12:00:00Z">REDACTED TIME</time>
+            <div data-ad-preview="message">REDACTED POST TEXT</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+
+    group, posts, comments = AppGroupExtractionAdapter().parse(
+        html,
+        source_url="https://app.invalid/groups/9100001/",
+        capture_id="capture-app-route-heading",
+        raw_sha256="f" * 64,
+        session_class=SessionClass.IMPORTED,
+        observed_at=datetime(2026, 7, 30, tzinfo=UTC),
+        lower_bound=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+
+    assert group.group_id == "9100001"
+    assert group.name == "REDACTED GROUP"
+    assert str(group.canonical_url) == "https://app.invalid/groups/9100001"
+    assert [post.post_id for post in posts] == ["9200012"]
+    assert comments == []
+
+
+def test_app_adapter_accepts_a_group_shell_before_posts_render() -> None:
+    html = b"""
+    <div role="main">
+      <h1><span>REDACTED GROUP</span></h1>
+      <nav><a href="/groups/other-group/">Other group</a></nav>
+      <div role="feed"></div>
+    </div>
+    """
+
+    group, posts, comments = AppGroupExtractionAdapter().parse(
+        html,
+        source_url="https://app.invalid/groups/9100001/",
+        capture_id="capture-app-shell",
+        raw_sha256="0" * 64,
+        session_class=SessionClass.IMPORTED,
+        observed_at=datetime(2026, 7, 30, tzinfo=UTC),
+        lower_bound=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+
+    assert group.group_id == "9100001"
+    assert posts == []
+    assert comments == []
+
+
 def test_app_adapter_records_supported_nulls_and_unix_time() -> None:
     html = b"""
     <main role="main">
