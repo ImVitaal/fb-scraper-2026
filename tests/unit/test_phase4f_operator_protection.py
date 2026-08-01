@@ -137,6 +137,17 @@ def test_live_discovery_defaults_to_lowest_measured_volume(tmp_path: Path) -> No
     assert _resolve_candidate(candidates, loaded.target.select) == "low"
 
 
+def test_single_joined_candidate_without_activity_is_selectable() -> None:
+    candidate = SimpleNamespace(
+        candidate_id="only",
+        activity_posts_per_day=None,
+        rank=1,
+        group_id="group-only",
+    )
+
+    assert _resolve_candidate((candidate,), "lowest-volume") == "only"
+
+
 def test_live_discovery_surfaces_join_results_and_reads_activity() -> None:
     result = AppDiscoveryParser().parse(
         b"""

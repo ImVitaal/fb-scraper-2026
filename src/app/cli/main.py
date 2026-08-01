@@ -403,6 +403,8 @@ def _resolve_candidate(candidates, selector: str) -> str:
             candidate for candidate in candidates if candidate.activity_posts_per_day is not None
         ]
         if not measured:
+            if len(candidates) == 1:
+                return candidates[0].candidate_id
             raise ValueError("automatic selection requires visible posts-per-day activity")
         return min(
             measured,
