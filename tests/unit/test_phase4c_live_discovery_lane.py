@@ -48,7 +48,7 @@ def test_live_adapter_captures_query_page_for_raw_first_persistence_then_parsing
 
     assert page.visited == [
         (
-            "https://app.invalid/groups/search/groups/?q=garden+Bristol&location=Bristol",
+            "https://app.invalid/groups/?q=garden+Bristol&location=Bristol",
             "domcontentloaded",
         )
     ]

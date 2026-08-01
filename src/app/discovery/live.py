@@ -109,7 +109,7 @@ class SessionDiscoveryAdapter:
         assert self.base_url is not None
         query = quote_plus(f"{keyword} {location}")
         encoded_location = quote_plus(location)
-        source_url = f"{self.base_url}/groups/search/groups/?q={query}&location={encoded_location}"
+        source_url = f"{self.base_url}/groups/?q={query}&location={encoded_location}"
         self._observe_responses(page)
         self._navigate(page, source_url)
         self._wait(page, self.navigation_delay_seconds)
@@ -273,8 +273,14 @@ class AppDiscoveryParser:
             str,
             tuple[str, str, tuple[str, ...], float, float, int | None, MembershipState],
         ] = {}
-        for link in soup.select("main a[href*='/groups/']"):
+        links = soup.select("main a[href*='/groups/'], [role='main'] a[href*='/groups/']")
+        for link in links:
             if not isinstance(link, Tag):
+                continue
+            container = link.find_parent(attrs={"role": ("listitem", "article")})
+            if container is None and isinstance(link.parent, Tag) and link.parent.name == "article":
+                container = link.parent
+            if not isinstance(container, Tag):
                 continue
             absolute = urljoin(source_url, self._required_href(link))
             parts = urlsplit(absolute)
@@ -286,8 +292,7 @@ class AppDiscoveryParser:
             name = link.get_text(" ", strip=True)
             if not name:
                 raise UnsupportedDiscoveryLayoutError("Group candidate name is missing")
-            container = link.find_parent(attrs={"role": ("listitem", "article")}) or link.parent
-            visible = container.get_text(" ", strip=True) if isinstance(container, Tag) else name
+            visible = container.get_text(" ", strip=True)
             membership = self._membership_state(container)
             keyword_score = self._token_score(keyword, visible)
             location_score = self._token_score(location, visible)
@@ -353,15 +358,15 @@ class AppDiscoveryParser:
         controls = " ".join(
             " ".join(
                 (
-                    button.get_text(" ", strip=True),
-                    str(button.get("aria-label", "")),
+                    control.get_text(" ", strip=True),
+                    str(control.get("aria-label", "")),
                 )
             ).casefold()
-            for button in container.select("button")
+            for control in container.select("button, [role='button']")
         )
         if "requested" in controls or "cancel request" in controls:
             return MembershipState.JOIN_REQUESTED
-        if "join" in controls:
+        if re.search(r"\bjoin\b", controls):
             return MembershipState.JOIN_AVAILABLE
         return MembershipState.JOINED
 

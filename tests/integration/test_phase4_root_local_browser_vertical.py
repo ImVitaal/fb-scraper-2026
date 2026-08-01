@@ -32,7 +32,7 @@ class _QuietHandler(SimpleHTTPRequestHandler):
         pass
 
     def do_GET(self) -> None:
-        if self.path.startswith("/groups/search/groups/"):
+        if self.path.startswith("/groups/") and "q=" in self.path:
             body = b"""
             <main role="main"><div role="list"><div role="listitem">
               <a href="https://app.invalid/groups/9100001/">REDACTED GARDEN GROUP</a>
