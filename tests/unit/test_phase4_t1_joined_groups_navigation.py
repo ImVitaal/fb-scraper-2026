@@ -87,3 +87,32 @@ def test_live_discovery_uses_joined_groups_route_and_preserves_filtering_contrac
         "t1-join-002",
         "t1-requested-003",
     ]
+
+
+def test_live_discovery_ignores_reserved_group_navigation_routes() -> None:
+    html = b"""
+    <div role="main">
+      <div role="listitem">
+        <a href="/groups/discover/">Discover More Groups</a>
+        <span>Garden community in Bristol</span>
+      </div>
+      <div role="listitem">
+        <a href="/groups/feed/">Group Feed</a>
+        <span>Garden community in Bristol</span>
+      </div>
+      <div role="listitem">
+        <a href="/groups/t1-joined-001/">REDACTED JOINED GROUP</a>
+        <span>Garden community in Bristol</span>
+        <div role="button">Joined</div>
+      </div>
+    </div>
+    """
+
+    result = AppDiscoveryParser().parse(
+        html,
+        keyword="garden",
+        location="Bristol",
+        source_url="https://app.invalid/groups/?q=garden+Bristol&location=Bristol",
+    )
+
+    assert [candidate.group_id for candidate in result.candidates] == ["t1-joined-001"]

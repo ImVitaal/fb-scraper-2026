@@ -23,6 +23,7 @@ from app.discovery.parser import (
 
 _GROUP_PATH = re.compile(r"^/groups/([^/?#]+)/?$")
 _POSTS_PER_DAY = re.compile(r"\b(\d+)\+?\s+posts?\s+a\s+day\b", re.IGNORECASE)
+_RESERVED_GROUP_ROUTES = frozenset({"categories", "discover", "feed", "joins"})
 
 
 class DiscoveryMode(StrEnum):
@@ -288,6 +289,8 @@ class AppDiscoveryParser:
             if match is None:
                 continue
             group_id = match.group(1)
+            if group_id.casefold() in _RESERVED_GROUP_ROUTES:
+                continue
             canonical_url = urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/"), "", ""))
             name = link.get_text(" ", strip=True)
             if not name:
