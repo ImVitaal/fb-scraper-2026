@@ -55,6 +55,7 @@ class BrowserCaptureLimits:
     expansion_delay_seconds: float = 0.0
     retry_delays_seconds: tuple[float, ...] = ()
     max_recent_posts: int = 30
+    max_empty_group_shell_pages: int = 3
 
     def __post_init__(self) -> None:
         positive = {
@@ -65,6 +66,7 @@ class BrowserCaptureLimits:
             "navigation_timeout_ms": self.navigation_timeout_ms,
             "ready_timeout_ms": self.ready_timeout_ms,
             "max_recent_posts": self.max_recent_posts,
+            "max_empty_group_shell_pages": self.max_empty_group_shell_pages,
         }
         for name, value in positive.items():
             if value <= 0:
@@ -148,6 +150,7 @@ class _BrowserRenderedPageCapture:
         self._storage_bytes = 0
         self._completed: list[str] = []
         self._captured_post_ids: set[str] = set()
+        self._empty_group_shell_pages = 0
         self._pending: _Action | None = None
         self._stop_failure: BrowserStateError | None = None
 
@@ -161,7 +164,8 @@ class _BrowserRenderedPageCapture:
             self._perform_checkpointed_action(checkpoint)
         assert self._page is not None
         self._wait_for_supported_state()
-        raw_html = self._bounded_html(self._page.content())
+        page_html = self._page.content()
+        raw_html = self._bounded_html(page_html)
         self._page_count += 1
         self._storage_bytes += len(raw_html)
         if self._storage_bytes > self._adapter.limits.max_storage_bytes:
@@ -169,6 +173,7 @@ class _BrowserRenderedPageCapture:
                 "storage_limit",
                 self._adapter.limits.max_storage_bytes,
             )
+        self._check_empty_group_shell_progress(page_html)
         self._pending = self._derive_next_action()
         next_checkpoint = (
             self._encode_checkpoint(self._pending) if self._pending is not None else None
@@ -357,6 +362,28 @@ class _BrowserRenderedPageCapture:
                 continue
             self._captured_post_ids.add(post_id)
         return str(soup).encode("utf-8")
+
+    def _check_empty_group_shell_progress(self, page_html: str) -> None:
+        """Stop after repeated rendered Group shells make no Post progress."""
+        soup = BeautifulSoup(page_html, "lxml")
+        has_post_progress = bool(
+            soup.select("a[href*='/posts/'], article, [role='article'], time[datetime]")
+        )
+        if has_post_progress:
+            self._empty_group_shell_pages = 0
+            return
+
+        self._empty_group_shell_pages += 1
+        limit = self._adapter.limits.max_empty_group_shell_pages
+        if self._empty_group_shell_pages < limit or self._empty_group_shell_pages == 1:
+            return
+        failure = BrowserStateError(
+            "empty_group_shell_no_post_progress",
+            f"rendered Group shell repeated for {self._empty_group_shell_pages} pages",
+        )
+        self._stop_failure = failure
+        self._adapter._record_stop(failure.failure_class)
+        raise failure
 
     @staticmethod
     def _post_id_for_button(candidate: Any) -> str | None:
