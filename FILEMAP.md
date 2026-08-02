@@ -1,7 +1,7 @@
 # Private Group Scanner — file map
 
-**Location:** `C:\Users\teqhv\fb scraper\FILEMAP.md`  
-**Updated:** 2026-08-02  
+**Location:** `C:\Users\teqhv\fb scraper\FILEMAP.md`
+**Updated:** 2026-08-02
 **Scope:** tracked project files. Private sessions, browser profiles, raw captures, exports, and receipts live outside Git and are intentionally omitted.
 
 ## Start here
