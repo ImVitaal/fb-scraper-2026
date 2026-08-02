@@ -1,7 +1,7 @@
 # Phase 4 execution log
 
 **Date:** 2026-07-30
-**Plan:** `OPERATOR_WORKING_RELEASE_PLAN.md`
+**Plan:** `PHASE_4_ONE_SHOT_THREAD_PM_PLAN.md`
 **Status:** Phase 4A through 4E implemented; Phase 4F awaits one controlled APP input.
 
 ## Baseline
@@ -324,3 +324,48 @@ Root completed the current protected operator-discovery attempt using the encryp
 
 The one-Group completion gate remains open. Phase 4G remains gated.
 
+
+## Current manager continuation — 2026-08-02
+
+This section supersedes earlier status summaries for the current checkout. Earlier test counts, commit tips, and profile-lock statements remain historical.
+
+### Local integration
+
+- `008149d` repairs scanner-owned normal-Chrome process cleanup and adds lifecycle coverage.
+- `d10bb8a` adds sole-candidate resolution for discovery when the rendered page exposes one valid candidate.
+- `c60f2a3` adds local Phase 4F interruption/resume/replay/export parity coverage.
+- `bee2315` supports rendered Group route headings and `[role="article"]` post containers on labelled fixtures.
+- `c13ac38` stops repeated empty Group shells after bounded no-progress evidence.
+- `0c18d83` filters reserved navigation routes such as `discover`, `feed`, and `joins` from Group candidates.
+- `9c40f1e` adds a bounded sequential `OperatorBatchWorkflow` skeleton with local focused coverage. It does not yet invoke the real one-Group resume path or CLI/config surface, and it is not a controlled Phase 4G receipt.
+
+### External APP evidence
+
+- Exact external-root doctor checks passed 9/9.
+- Imported and guided session health reached the authenticated route state.
+- Normal-Chrome cleanup checks found zero scanner-owned browser processes, no profile singleton locks, no `DevToolsActivePort`, and no capture lock.
+- The guided T2 attempt stopped on repeated empty Group shells. Its redacted receipt is outside Git at `exports\t2-guided-REVISE-d1beb55f-ab43-4024-ad6a-73a89fca81b5.json`, SHA-256 `c47ee979d0eaa3d24ed7374ee7bb58d84f8a97dd88cf03440a8b20f81b5525ce`.
+- The current manager discovery attempt stopped before target selection with `unsupported_discovery_layout`. Its redacted receipt is outside Git at `exports\2c3a1fd2-83bb-4418-ac0d-699fd802e828.operator-receipt.json`, SHA-256 `D95E7AEE070D10258E8AA272D429A97B7C76FB21F5AE9EF761C3CD103D717667`.
+- Route, query, and direct Group probes remain external evidence only. They found no supported joined candidate and no usable post/timestamp content.
+
+### Gate decision
+
+Phase 4F is **REVISE**. The one-Group APP capture, interruption/resume, offline replay, five-export parity, Comment reconciliation, and date-boundary evidence remain open. Phase 4G and T4 remain gated. No membership or social actions occurred.
+
+### Record and cleanup note
+
+The stale project handoff and superseded completion documents were removed in `31d7590`. Current status is consolidated in `SESSION_STATE.md`, this phase log, and `docs/phase-4/phase-4-completion-report.md`. Private session material, raw captures, configs, and receipts remain outside Git.
+
+### Local full-suite result — 2026-08-02
+
+- `uv run pytest`: 234 passed in 309.83 seconds; coverage 81.17%; configured 80% threshold passed.
+
+### Final local release checks — 2026-08-02
+
+- Ruff format check: passed.
+- Ruff lint: passed.
+- `ty check`: passed.
+- Tracked-file secret scan: zero findings.
+- `git diff --check`: passed.
+- `pgscan doctor`: 9/9 checks passed.
+- Git push parity remains the last manager action. Phase 4F and 4G APP acceptance remain open.

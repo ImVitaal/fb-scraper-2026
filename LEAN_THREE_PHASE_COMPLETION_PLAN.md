@@ -243,5 +243,5 @@ Skip the architecture when those answers are not concrete.
 
 Phases 1–3 now have fixture-backed completion receipts.
 
-Use `OPERATOR_WORKING_RELEASE_PLAN.md` for the controlled operator working release.
+Use `docs/phase-4/PHASE_4_ONE_SHOT_THREAD_PM_PLAN.md` for the controlled Phase 4 operator release.
 Do not start product expansion before its Phase 4 gate passes.

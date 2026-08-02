@@ -52,7 +52,7 @@ the evidence supports.
 Connect the validated fixture architecture to one controlled operator workflow.
 Then repeat the accepted workflow across ten Groups.
 
-Use `OPERATOR_WORKING_RELEASE_PLAN.md` as the current execution source.
+Use `LEAN_THREE_PHASE_COMPLETION_PLAN.md` as the current project source and `docs/phase-4/PHASE_4_ONE_SHOT_THREAD_PM_PLAN.md` for the Phase 4 execution sequence.
 
 ### Phase 5 — Product expansion
 
@@ -175,8 +175,9 @@ Phase 1 completes only when:
 
 ## Agent execution
 
-`OPERATOR_WORKING_RELEASE_PLAN.md` is the current implementation source of
-truth. Record progress in `docs/phase-4/phase-4-log.md`.
+`LEAN_THREE_PHASE_COMPLETION_PLAN.md` is the current implementation source of
+truth. Use `docs/phase-4/PHASE_4_ONE_SHOT_THREAD_PM_PLAN.md` for Phase 4
+execution and record progress in `docs/phase-4/phase-4-log.md`.
 
 Agents must:
 

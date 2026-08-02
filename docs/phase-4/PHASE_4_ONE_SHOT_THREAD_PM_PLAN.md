@@ -40,8 +40,8 @@
 
 ## Thread PM operating contract
 
-- Run the manager and every worker as **Luna with High reasoning**.
-- Use independent Codex tasks, not subagents.
+- Run the manager and every worker as **Luna with xhigh reasoning**.
+- Use independent Codex threads for bounded work.
 - At startup, inspect existing tasks and reuse one only when its goal and ownership still match.
 - Give each task the bounded goal, owned paths, evidence, token forecast, and stop conditions below.
 - Use event-driven `wait_threads` reviews at first artifact, blocker, failed test, stage gate, and completion.
@@ -52,7 +52,7 @@
 
 Relative RICE scores use Phase 4 completion reach, release impact, current evidence confidence, and expected effort.
 
-| Task | RICE | Risk/value | Luna/High forecast | Rework + validation |
+| Task | RICE | Risk/value | Luna/xhigh forecast | Rework + validation |
 |---|---:|---|---:|---:|
 | T1 — current-layout discovery | 100 | Release blocker / high | 25k–40k tokens | 12k included |
 | T2 — controlled one-Group proof | 90 | Highest failure cost / high | 20k–35k tokens | 10k included |
@@ -66,7 +66,7 @@ Relative RICE scores use Phase 4 completion reach, release impact, current evide
 
 ### Gate 0 — manager baseline
 
-1. Confirm Luna/High and independent task-management tools are available.
+1. Confirm Luna/xhigh and independent thread tools are available.
 2. Confirm `main == origin/main == c57d29b` and the worktree is clean.
 3. Reuse the verified baseline above; do not rerun the four-minute suite until a code change exists.
 4. Create T1 only. T2 waits for T1 acceptance; T3 waits for Phase 4F; T4 waits for the candidate release.
@@ -101,7 +101,7 @@ Relative RICE scores use Phase 4 completion reach, release impact, current evide
 5. Interrupt after a durable interaction, resume, then replay offline.
 6. Compare Group/Post/Comment identifiers, 30-day filtering, visible top-level Comment reconciliation, CSV/JSON/SQLite/manifest/Markdown outputs, and receipt hashes.
 
-**Acceptance:** every Phase 4F line in `OPERATOR_WORKING_RELEASE_PLAN.md` has a redacted evidence value; both session preparations complete; run/resume/replay and all exports agree; tracked secrets remain zero.
+**Acceptance:** every Phase 4F acceptance line in `SESSION_STATE.md` and `docs/phase-4/phase-4-completion-report.md` has a current redacted evidence value; both session preparations complete; run/resume/replay and all exports agree; tracked secrets remain zero.
 
 **Stop/reforecast:** stop immediately on session challenge/restriction, 401/403/429, or new layout drift. Fix only a reproduced product defect. Browser sign-in or checkpoint interaction is the only operator-visible pause.
 

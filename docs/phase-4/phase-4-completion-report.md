@@ -1,94 +1,86 @@
 # Phase 4 completion report
 
-**Date:** 2026-07-30
-**Status:** Local release candidate complete; controlled APP gate pending
+**Updated:** 2026-08-02
+**Status:** **REVISE — local candidate verified; controlled APP one-Group gate open**
+**Repository:** `C:\Users\teqhv\fb scraper`
 **Branch:** `main`
 
-## Integration commits
+## Executive result
 
-- `90a8a5b` — operator preflight and session health.
-- `ec3f3b1` — persistent browser capture.
-- `5c15f56` — APP extraction, discovery, and replay.
-- `8568625` — root operator workflow integration.
-- `98c515a` — deterministic resume identity correction.
-- `9a6ec4f` — operator receipts, visible capture defaults, and copied browser-profile import.
+The project now has a coherent local Phase 4 candidate and a fail-closed live stop path. The current authenticated APP session does not expose a supported joined Group candidate or usable post/timestamp content, so the required one-Group receipt is still open. Phase 4G and final release acceptance remain gated by that evidence.
+
+No claim in this report promotes fixture or local-browser evidence to APP acceptance.
+
+## Integrated work
+
+- Normal-Chrome attachment now releases scanner-owned processes and profile locks after finalization.
+- Discovery filters reserved navigation routes and stops when no valid Group candidate exists.
+- Rendered Group headings and `[role="article"]` post containers are parsed on labelled fixtures.
+- Repeated empty Group shells stop after the configured no-progress limit.
+- Local one-Group parity covers interruption, resume, offline replay, and CSV/JSON/SQLite/manifest/Markdown outputs.
+- `OperatorBatchWorkflow` provides a bounded sequential local skeleton with per-target progress writes, incomplete-only callback retry, recoverable-error handling, redacted target keys, and aggregate metrics. It is not wired to the real one-Group resume path or CLI/config surface.
 
 ## Acceptance matrix
 
-| Gate | Result |
-|---|---|
-| Windows, Playwright, Chromium, DPAPI, migrations, roots | Pass |
-| Five explicit session states | Pass |
-| Persistent real Playwright context | Pass |
-| Raw-first capture | Pass |
-| Checkpoint before browser interaction | Pass |
-| APP Group, Post, top-level Comment, media extraction | Pass on labelled redacted fixtures |
-| Thirty-day boundary | Pass on labelled redacted fixtures |
-| Live discovery | Pass on local real-browser fixture |
-| Imported and guided local workflows | Pass |
-| Interruption and resume identifier parity | Pass |
-| Offline replay parity | Pass |
-| CSV, JSON, SQLite, manifest, Markdown | Pass |
-| Stable operator receipt | Pass locally |
-| Visible Comment reconciliation in receipt | Pass locally; schema 1.1 |
-| Joined-Group prerequisite classification | Pass locally |
-| Application-bound copied-profile diagnostic | Pass locally |
-| Unsupported layout false successes | 0 |
-| Identifier precision | 100% on labelled fixtures |
-| Supported required-field accuracy | 100% on labelled fixtures |
-| Pagination completeness | 100% on labelled fixtures |
-| Duplicate canonical records | 0% |
-| Tests and coverage | 174 passed; 81.58% |
-| Tracked secret findings | 0 |
-| Controlled APP one-Group | Pending: copied Chrome 150 `Default` profile did not produce importable state |
-| Controlled APP ten-Group | Waiting for one-Group gate |
+| Gate | Result | Evidence |
+|---|---|---|
+| Native Windows, Python, roots, DPAPI/session contracts | Pass locally | Doctor and focused session tests |
+| Normal-Chrome attachment cleanup | Pass locally and in external cleanup check | Zero scanner-owned processes and locks after cleanup |
+| Rendered APP parsing | Pass on labelled redacted fixtures | Focused Phase 4C/T1 tests |
+| Unsupported-layout handling | Pass | Current APP run stops with `unsupported_discovery_layout` |
+| Raw-first capture and checkpoint behavior | Pass locally | Existing capture and parity tests |
+| Interrupted run and resume identity parity | Pass locally | Phase 4F local parity test |
+| Offline replay and five local export formats | Pass locally | Phase 4F local parity test |
+| Phase 4G sequential batch wrapper | Local skeleton only | Three focused integration tests; no real one-Group adapter, CLI/config path, or live receipt |
+| Controlled APP session preparation | Pass | Doctor 9/9; imported and guided health reached authenticated route |
+| Controlled APP automatic joined-Group discovery | **Open** | No supported joined candidate in current route |
+| Controlled APP one-Group capture | **Open** | No target selected; no capture receipt |
+| Controlled APP resume/replay/export parity | **Open** | Depends on one-Group capture |
+| Controlled APP ten-Group run | **Gated** | Depends on accepted one-Group receipt |
+| T4 release verdict | **Gated** | Depends on accepted Phase 4F and Phase 4G evidence |
 
-## Working operator commands
+## External receipts
+
+All paths below are outside Git and contain redacted operational evidence only.
+
+| Evidence | Path | SHA-256 |
+|---|---|---|
+| Guided T2 stop | `%LOCALAPPDATA%\private-group-scanner\exports\t2-guided-REVISE-d1beb55f-ab43-4024-ad6a-73a89fca81b5.json` | `c47ee979d0eaa3d24ed7374ee7bb58d84f8a97dd88cf03440a8b20f81b5525ce` |
+| Current manager discovery stop | `%LOCALAPPDATA%\private-group-scanner\exports\2c3a1fd2-83bb-4418-ac0d-699fd802e828.operator-receipt.json` | `D95E7AEE070D10258E8AA272D429A97B7C76FB21F5AE9EF761C3CD103D717667` |
+| Route probe | `%LOCALAPPDATA%\private-group-scanner\route-probe-manager-20260802.json` | `0adf3a594fec81c57f3aa786d6b4c42d7715368b120dd1b9ed927a4645e8cacc` |
+| Discovery query probe | `%LOCALAPPDATA%\private-group-scanner\discovery-query-probe-20260802.json` | `b82239acf1baefcd71217eeb4be523ec96912310ffa3e0856da5cc23fb59279e` |
+| Direct Group probe | `%LOCALAPPDATA%\private-group-scanner\phase4f-direct-probe-20260802\receipt.json` | `f702afe700c33afaf34f7e74f5b6beb23a51ddb3788d7e37da4fae067afbf2cd` |
+
+The earlier profile-lock stop remains historical evidence at `%LOCALAPPDATA%\private-group-scanner\t2-phase4f-stop-20260801.json` with SHA-256 `789d40266a0a1186daa987fb414f37b659c4d67ad914ae3e2e9224667a21c6a21`. The lifecycle repair and later cleanup supersede that blocker; the APP discovery gate remains open for a different reason.
+
+## Quality gate record
+
+The full local suite and final local release commands were run after this record update.
 
 ```powershell
-uv run pgscan doctor
-
-uv run pgscan session import-browser `
-  --profile operator `
-  --browser-profile BROWSER_USER_DATA_ROOT `
-  --profile-name Default `
-  --channel chrome
-
-uv run pgscan session health `
-  --profile operator `
-  --probe-url APP_AUTHENTICATED_URL
-
-uv run pgscan run --config operator.toml
-uv run pgscan inspect RUN_ID
-uv run pgscan resume RUN_ID
-uv run pgscan replay RUN_ID --offline
+uv run ruff format --check .
+uv run ruff check .
+uv run ty check
+uv run pytest
+$files = @(git ls-files)
+uv run detect-secrets scan $files
+git diff --check
 ```
 
-Close the source browser before profile import. The importer copies the selected profile and preserves its source.
-Use `uv run pgscan session login --profile operator` for guided login.
-Operator capture opens visibly by default. Use `--headless` only for automation.
+- Full suite: **234 passed** in 309.83 seconds; coverage **81.17%** (80% threshold met).
+- Ruff format, Ruff lint, and `ty` passed. The tracked-file secret scan returned zero findings. `pgscan doctor` passed 9/9. Git checks passed before commit.
+- A clean Git tree and `origin/main` parity are required.
 
-## Current decision
+## Release decision
 
-The local operator architecture is connected and verified with real Chromium.
-The default session root contains no ready encrypted APP profile.
-The controlled browser-profile attempt closed Chrome and passed all nine doctor checks.
-Import failed before discovery because the copied Chrome 150 profile did not
-produce storage state.
-The source contained nine APP-domain rows, including eight unexpired persistent
-rows, and Playwright reported token decryption failures.
-The controlled one-Group gate remains pending on copied-profile decryption
-compatibility.
-A successful receipt now records expected-versus-exported visible top-level
-Comment counts and their equality result.
-A stable local resume receipt records raw-set, identifier-set, normalized, export, metric, version, count, and limit evidence.
-The ten-Group gate remains closed until that receipt passes.
+**REVISE.** The local implementation is ready for the next controlled attempt, but the external APP route currently returns a shell without a supported joined Group candidate. Keep the one-Group gate closed. Do not activate ten-Group collection or report a Phase 4 release until a redacted APP receipt proves automatic selection, visible capture, interruption/resume, offline replay, five-export parity, Comment reconciliation, and date-boundary behavior.
 
-## Limits
+## Next controlled attempt
 
-- APP selectors remain versioned and can report layout drift.
-- Comment replies remain excluded.
-- Media downloads remain excluded.
-- The controlled APP and ten-Group metrics are not yet recorded.
-- Product expansion remains deferred.
-
+1. Confirm zero scanner-owned Chrome processes, profile singleton locks, `DevToolsActivePort`, and capture locks.
+2. Run doctor and session health at the exact external roots.
+3. Use the supported imported or guided session path.
+4. Run keyword/location discovery with one visible worker.
+5. Stop at the first unsupported shell or protection state and preserve a redacted receipt.
+6. After a valid joined Group is exposed, run the full one-Group capture/resume/replay/export sequence.
+7. Only then activate the sequential ten-Group candidate and T4 verification.
