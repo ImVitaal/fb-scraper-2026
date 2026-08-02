@@ -911,40 +911,49 @@ def resume(
                 else None
             )
         protection = OperatorProtectionConfiguration()
-        adapter = PlaywrightGroupCaptureAdapter(
-            storage_state,
-            headless=headless,
-            limits=_protection_limits(protection),
-            user_data_directory=browser_profile,
-            channel="chrome" if browser_profile is not None else None,
-        )
-        try:
-            with adapter.capture_pages(
-                live.canonical_url, lower_bound=live.lower_bound
-            ) as capture_page:
-                result = LiveCaptureWorkflow(output, raw_root).capture_pages(
-                    run_id,
-                    capture_page,
-                    max_pages=adapter.limits.max_pages,
-                )
-        except BrowserStateError as error:
-            receipt = OperatorRunReceiptWriter(output).write_stop(
-                run_id,
-                adapter.limits,
-                protection=_protection_receipt(adapter, protection),
-                stop_reason=error.failure_class,
+        with _operator_capture_gate(output, live.group_id, protection) as between_group_wait:
+            adapter = PlaywrightGroupCaptureAdapter(
+                storage_state,
+                headless=headless,
+                limits=_protection_limits(protection),
+                user_data_directory=browser_profile,
+                channel="chrome" if browser_profile is not None else None,
             )
-            raise BrowserStateError(
-                error.failure_class,
-                f"operator stopped; receipt={receipt.path}",
-            ) from error
-        delivery = StoredHtmlReplayWorkflow(output, raw_root).replay(run_id, offline=True)
-        receipt = OperatorRunReceiptWriter(output).write(
-            run_id,
-            delivery,
-            adapter.limits,
-            protection=_protection_receipt(adapter, protection),
-        )
+            try:
+                with adapter.capture_pages(
+                    live.canonical_url, lower_bound=live.lower_bound
+                ) as capture_page:
+                    result = LiveCaptureWorkflow(output, raw_root).capture_pages(
+                        run_id,
+                        capture_page,
+                        max_pages=adapter.limits.max_pages,
+                    )
+            except BrowserStateError as error:
+                receipt = OperatorRunReceiptWriter(output).write_stop(
+                    run_id,
+                    adapter.limits,
+                    protection=_protection_receipt(
+                        adapter,
+                        protection,
+                        between_group_wait_seconds=between_group_wait,
+                    ),
+                    stop_reason=error.failure_class,
+                )
+                raise BrowserStateError(
+                    error.failure_class,
+                    f"operator stopped; receipt={receipt.path}",
+                ) from error
+            delivery = StoredHtmlReplayWorkflow(output, raw_root).replay(run_id, offline=True)
+            receipt = OperatorRunReceiptWriter(output).write(
+                run_id,
+                delivery,
+                adapter.limits,
+                protection=_protection_receipt(
+                    adapter,
+                    protection,
+                    between_group_wait_seconds=between_group_wait,
+                ),
+            )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error

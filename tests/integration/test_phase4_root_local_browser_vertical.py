@@ -357,6 +357,7 @@ def test_real_browser_interruption_resumes_from_durable_checkpoint(
     receipt = json.loads(Path(payload["receipt"]).read_text(encoding="utf-8"))
     assert receipt["metrics"]["resume"] is not None
     assert receipt["metrics"]["replay"] is not None
+    assert receipt["protection"]["between_group_wait_applied_seconds"] == 0.0
     assert len(list(raw_root.glob("*.html.gz"))) == 1
     assert len(receipt["raw_captures"]) == 1
 
