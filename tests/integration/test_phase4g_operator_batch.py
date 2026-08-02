@@ -8,7 +8,10 @@ from pathlib import Path
 
 import pytest
 
+from app.capture import BrowserStateError
+from app.discovery import UnsupportedDiscoveryLayoutError
 from app.workflows.operator_batch import (
+    OperatorBatchStopError,
     OperatorBatchTarget,
     OperatorBatchWorkflow,
     OperatorCaptureResult,
@@ -66,6 +69,85 @@ def test_operator_batch_completes_ten_targets_with_redacted_aggregate_receipt(
     payload = json.loads(result.receipt_path.read_text(encoding="utf-8"))
     assert all(len(item["target_key"]) == 64 for item in payload["groups"])
     assert all("GROUP-" not in json.dumps(item) for item in payload["groups"])
+
+
+def test_operator_batch_applies_one_worker_inter_group_pacing(tmp_path: Path) -> None:
+    sleeps: list[float] = []
+
+    result = OperatorBatchWorkflow(
+        tmp_path / "output",
+        tmp_path / "raw",
+        between_groups_seconds=900,
+        sleep=sleeps.append,
+    ).run(_targets()[:3], _capture)
+
+    assert result.metrics.worker_limit == 1
+    assert sleeps == [900.0, 900.0]
+
+
+def test_operator_batch_persists_each_terminal_group_before_next_callback(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "output"
+    observations: list[tuple[str, list[str]]] = []
+
+    def capture(target: OperatorBatchTarget) -> OperatorCaptureResult:
+        payload = json.loads((output / "phase4g-batch.json").read_text(encoding="utf-8"))
+        observations.append((target.group_id, [item["state"] for item in payload["groups"]]))
+        return _capture(target)
+
+    OperatorBatchWorkflow(
+        output,
+        tmp_path / "raw",
+        between_groups_seconds=0,
+    ).run(_targets()[:3], capture)
+
+    assert observations == [
+        ("GROUP-00", []),
+        ("GROUP-01", ["succeeded"]),
+        ("GROUP-02", ["succeeded", "succeeded"]),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("stop_error", "expected_reason"),
+    (
+        (BrowserStateError("session_challenged", "synthetic stop"), "session_challenged"),
+        (UnsupportedDiscoveryLayoutError("synthetic stop"), "unsupported_discovery_layout"),
+        (OperatorBatchStopError("local_browser_profile_lock"), "local_browser_profile_lock"),
+    ),
+)
+def test_operator_batch_halts_and_preserves_operator_stops(
+    tmp_path: Path,
+    stop_error: Exception,
+    expected_reason: str,
+) -> None:
+    calls: list[str] = []
+
+    def capture(target: OperatorBatchTarget) -> OperatorCaptureResult:
+        calls.append(target.group_id)
+        if target.group_id == "GROUP-01":
+            raise stop_error
+        return _capture(target)
+
+    workflow = OperatorBatchWorkflow(
+        tmp_path / "output",
+        tmp_path / "raw",
+        between_groups_seconds=0,
+    )
+    result = workflow.run(_targets()[:3], capture)
+
+    assert calls == ["GROUP-00", "GROUP-01"]
+    assert [item.state for item in result.groups] == ["succeeded", "stopped"]
+    assert result.groups[1].stop_reason == expected_reason
+    payload = json.loads(result.receipt_path.read_text(encoding="utf-8"))
+    assert payload["state"] == "stopped"
+    assert payload["groups"][1]["stop_reason"] == expected_reason
+
+    calls.clear()
+    resumed = workflow.run(_targets()[:3], capture, resume=True)
+    assert calls == []
+    assert [item.state for item in resumed.groups] == ["succeeded", "stopped"]
 
 
 def test_operator_batch_resume_reruns_only_interrupted_targets(tmp_path: Path) -> None:
@@ -168,6 +250,22 @@ def test_operator_batch_rejects_duplicate_targets(tmp_path: Path) -> None:
         ).run(same_url, _capture)
     assert not (tmp_path / "output-urls").exists()
     assert not (tmp_path / "raw-urls").exists()
+
+
+def test_operator_batch_rejects_invalid_target_identity_before_writes(tmp_path: Path) -> None:
+    output = tmp_path / "output"
+    raw = tmp_path / "raw"
+    invalid = (
+        OperatorBatchTarget(" ", "https://app.invalid/groups/blank"),
+        OperatorBatchTarget("GROUP-01", "http://app.invalid/groups/GROUP-01"),
+    )
+
+    with pytest.raises(ValueError, match="Group ids"):
+        OperatorBatchWorkflow(output, raw, between_groups_seconds=0).run(invalid[:1], _capture)
+    with pytest.raises(ValueError, match="HTTPS"):
+        OperatorBatchWorkflow(output, raw, between_groups_seconds=0).run(invalid[1:], _capture)
+    assert not output.exists()
+    assert not raw.exists()
 
 
 def test_operator_batch_resume_rejects_a_changed_target_set(tmp_path: Path) -> None:

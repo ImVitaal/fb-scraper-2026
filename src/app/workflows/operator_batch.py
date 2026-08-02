@@ -11,7 +11,10 @@ from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import cast
+from urllib.parse import urlsplit
 
+from app.capture import BrowserStateError
+from app.discovery import UnsupportedDiscoveryLayoutError
 from app.metrics import (
     ProcessResourceMeasurement,
     ProcessResourceTimer,
@@ -49,6 +52,21 @@ class RecoverableOperatorBatchError(RuntimeError):
     """A Group attempt stopped in a state that a later resume may retry."""
 
 
+class OperatorBatchStopError(RuntimeError):
+    """A callback circuit breaker that must halt the remaining Group queue.
+
+    Root adapters should translate session, profile-lock, and other operator
+    stop failures into this type when their concrete exception is outside this
+    workflow's dependency boundary.
+    """
+
+    def __init__(self, stop_reason: str) -> None:
+        if not stop_reason or not stop_reason.strip():
+            raise ValueError("stop_reason must be non-empty")
+        self.stop_reason = stop_reason
+        super().__init__(stop_reason)
+
+
 @dataclass(frozen=True)
 class OperatorBatchGroupResult:
     """Redacted terminal state for one ordered Group target."""
@@ -65,6 +83,7 @@ class OperatorBatchGroupResult:
     validated_comments: int
     duration_seconds: float
     error_type: str | None
+    stop_reason: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -77,6 +96,7 @@ class OperatorBatchGroupResult:
             "raw_sha256": self.raw_sha256,
             "run_id_sha256": self.run_id_sha256,
             "state": self.state,
+            "stop_reason": self.stop_reason,
             "target_key": self.target_key,
             "validated_comments": self.validated_comments,
             "validated_posts": self.validated_posts,
@@ -200,6 +220,9 @@ class OperatorBatchWorkflow:
         try:
             for target_index, target in enumerate(ordered):
                 previous_result = previous.get(target.target_key)
+                if previous_result is not None and previous_result.state == "stopped":
+                    groups.append(previous_result)
+                    break
                 if previous_result is not None and previous_result.state != "incomplete":
                     groups.append(previous_result)
                     continue
@@ -220,6 +243,30 @@ class OperatorBatchWorkflow:
                     groups.append(result)
                     self._write_progress(groups, target_keys)
                     raise
+                except (
+                    OperatorBatchStopError,
+                    BrowserStateError,
+                    UnsupportedDiscoveryLayoutError,
+                ) as error:
+                    result = self._terminal(
+                        target,
+                        state="stopped",
+                        attempts=attempts,
+                        started=started,
+                        error_type=type(error).__name__,
+                        stop_reason=(
+                            error.stop_reason
+                            if isinstance(error, OperatorBatchStopError)
+                            else (
+                                error.failure_class
+                                if isinstance(error, BrowserStateError)
+                                else "unsupported_discovery_layout"
+                            )
+                        ),
+                    )
+                    groups.append(result)
+                    self._write_progress(groups, target_keys)
+                    break
                 except RecoverableOperatorBatchError as error:
                     result = self._terminal(
                         target,
@@ -267,7 +314,7 @@ class OperatorBatchWorkflow:
             receipt_path=self.receipt_path,
             report_path=self.report_path,
         )
-        self._write_result(result)
+        self._write_result(result, target_keys)
         return result
 
     @classmethod
@@ -277,8 +324,14 @@ class OperatorBatchWorkflow:
         values = tuple(targets)
         if not 1 <= len(values) <= cls.max_groups:
             raise ValueError("operator batch must contain between one and ten targets")
-        if any(not target.group_id or not target.canonical_url for target in values):
-            raise ValueError("operator batch targets require Group ids and canonical URLs")
+        for target in values:
+            if not isinstance(target.group_id, str) or not target.group_id.strip():
+                raise ValueError("operator batch targets require non-empty Group ids")
+            if not isinstance(target.canonical_url, str) or not target.canonical_url.strip():
+                raise ValueError("operator batch targets require canonical URLs")
+            parsed_url = urlsplit(target.canonical_url)
+            if parsed_url.scheme.lower() != "https" or not parsed_url.netloc:
+                raise ValueError("operator batch targets require absolute HTTPS canonical URLs")
         target_keys = tuple(target.target_key for target in values)
         if len(set(target_keys)) != len(target_keys):
             raise ValueError("operator batch contains duplicate targets")
@@ -341,7 +394,7 @@ class OperatorBatchWorkflow:
         state = value["state"]
         if not isinstance(target_key, str) or not isinstance(state, str):
             raise TypeError
-        if state not in {"succeeded", "incomplete", "failed"}:
+        if state not in {"succeeded", "incomplete", "failed", "stopped"}:
             raise ValueError("existing Phase 4G receipt contains an invalid Group state")
         identifier_count = int(cast(int, value.get("identifier_count", 0)))
         return OperatorBatchGroupResult(
@@ -367,6 +420,9 @@ class OperatorBatchWorkflow:
             validated_comments=int(cast(int, value.get("validated_comments", 0))),
             duration_seconds=float(cast(float, value["duration_seconds"])),
             error_type=str(value["error_type"]) if value.get("error_type") is not None else None,
+            stop_reason=(
+                str(value["stop_reason"]) if value.get("stop_reason") is not None else None
+            ),
         )
 
     @staticmethod
@@ -400,6 +456,7 @@ class OperatorBatchWorkflow:
         attempts: int,
         started: float,
         error_type: str,
+        stop_reason: str | None = None,
     ) -> OperatorBatchGroupResult:
         return OperatorBatchGroupResult(
             target_key=target.target_key,
@@ -414,6 +471,7 @@ class OperatorBatchWorkflow:
             validated_comments=0,
             duration_seconds=time.perf_counter() - started,
             error_type=error_type,
+            stop_reason=stop_reason,
         )
 
     def _snapshot(self) -> ResourceSnapshot:
@@ -476,10 +534,12 @@ class OperatorBatchWorkflow:
             "target_set_sha256": self._set_hash(target_keys),
             "worker_limit": self.worker_limit,
         }
-        self._write_identifier_state(target_keys)
         self._atomic_json(self.receipt_path, payload)
+        # Publish the receipt first. If the identifier sidecar replacement fails,
+        # resume rejects the newer receipt rather than mixing generations.
+        self._write_identifier_state(target_keys)
 
-    def _write_result(self, result: OperatorBatchRunResult) -> None:
+    def _write_result(self, result: OperatorBatchRunResult, target_keys: tuple[str, ...]) -> None:
         self.output.mkdir(parents=True, exist_ok=True)
         payload = {
             "groups": [item.as_dict() for item in result.groups],
@@ -488,9 +548,11 @@ class OperatorBatchWorkflow:
             "normalized_set_sha256": result.normalized_set_sha256,
             "raw_set_sha256": result.raw_set_sha256,
             "schema_version": "1.0",
-            "state": "completed",
-            "target_keys": [item.target_key for item in result.groups],
-            "target_set_sha256": self._set_hash(item.target_key for item in result.groups),
+            "state": "stopped"
+            if any(item.state == "stopped" for item in result.groups)
+            else "completed",
+            "target_keys": list(target_keys),
+            "target_set_sha256": self._set_hash(target_keys),
         }
         self._atomic_json(self.receipt_path, payload)
         metrics = result.metrics
@@ -511,6 +573,11 @@ class OperatorBatchWorkflow:
             f"- Normalized-set SHA-256: `{result.normalized_set_sha256}`",
             f"- Raw-set SHA-256: `{result.raw_set_sha256}`",
         ]
+        stop_reasons = sorted(
+            {item.stop_reason for item in result.groups if item.stop_reason is not None}
+        )
+        if stop_reasons:
+            lines.append(f"- Stop reasons: `{', '.join(stop_reasons)}`")
         self._atomic_write(self.report_path, ("\n".join(lines) + "\n").encode("utf-8"))
 
     @staticmethod
