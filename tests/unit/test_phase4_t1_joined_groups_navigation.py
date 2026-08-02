@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.discovery import (
     AppDiscoveryParser,
     DiscoveryMode,
     MembershipState,
     SessionDiscoveryAdapter,
+    UnsupportedDiscoveryLayoutError,
 )
 
 FIXTURE = (
@@ -116,3 +119,26 @@ def test_live_discovery_ignores_reserved_group_navigation_routes() -> None:
     )
 
     assert [candidate.group_id for candidate in result.candidates] == ["t1-joined-001"]
+
+
+def test_live_discovery_rejects_duplicate_group_membership_conflict() -> None:
+    html = b"""
+    <div role="main">
+      <article role="article">
+        <a href="/groups/duplicate-group/">Garden Group</a>
+        <div role="button">Joined</div>
+      </article>
+      <article role="article">
+        <a href="/groups/duplicate-group/">Garden Group mirror</a>
+        <div role="button">Join Group</div>
+      </article>
+    </div>
+    """
+
+    with pytest.raises(UnsupportedDiscoveryLayoutError, match="membership"):
+        AppDiscoveryParser().parse(
+            html,
+            keyword="garden",
+            location="Bristol",
+            source_url="https://app.invalid/groups/?q=garden+Bristol",
+        )

@@ -64,6 +64,11 @@ def test_operator_writes_a_redacted_receipt_when_discovery_layout_is_unsupported
     monkeypatch.setattr(main.SessionProfileService, "read_state", lambda self, profile: {})
     monkeypatch.setattr(
         main.SessionProfileService,
+        "inspect",
+        lambda self, profile: SimpleNamespace(source_browser="imported_storage_state"),
+    )
+    monkeypatch.setattr(
+        main.SessionProfileService,
         "probe_health",
         lambda self, profile, route, probe: SimpleNamespace(health=SimpleNamespace(value="ready")),
     )

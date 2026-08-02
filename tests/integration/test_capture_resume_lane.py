@@ -265,5 +265,42 @@ def test_layout_drift_preserves_raw_and_records_non_success_health(tmp_path: Pat
         attempt = database.connection.execute(
             "SELECT health FROM attempts WHERE task_id = ?", ("job-drift-lane",)
         ).fetchone()
+        raw_capture = database.connection.execute(
+            "SELECT storage_path, byte_count FROM raw_captures"
+        ).fetchone()
     assert state is JobState.FAILED
     assert attempt["health"] == "parser_drift"
+    assert raw_capture["storage_path"].endswith(".html.gz")
+    assert raw_capture["byte_count"] > 0
+
+
+def test_terminal_checkpoint_resume_finishes_without_refetching_the_page(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "terminal-resume"
+    raw_root = tmp_path / "raw-terminal-resume"
+    _prepare(output, tmp_path / "sessions-terminal-resume", "job-terminal-resume")
+    page = RenderedPage(
+        _html("post-terminal", "comment-terminal", observed_at="2026-07-29T12:00:00Z"), None
+    )
+    first_events: list[str] = []
+    workflow = LiveCaptureWorkflow(output, raw_root)
+
+    with pytest.raises(KeyboardInterrupt):
+        workflow.capture_pages(
+            "job-terminal-resume",
+            _source({None: page}, first_events),
+            max_pages=1,
+            interrupt_after_pages=1,
+        )
+
+    resumed_events: list[str] = []
+    result = workflow.capture_pages(
+        "job-terminal-resume",
+        _source({None: page}, resumed_events),
+        max_pages=1,
+    )
+
+    assert first_events == ["fetch:None"]
+    assert resumed_events == []
+    assert result.state is JobState.SUCCEEDED

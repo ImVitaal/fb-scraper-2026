@@ -110,3 +110,40 @@ def test_unsupported_live_layout_records_parser_drift_and_never_succeeds(tmp_pat
         ).fetchone()
     assert attempt["health"] == "parser_drift"
     assert failure["failure_class"] == "parser_drift"
+
+
+def test_app_capture_rejects_a_group_url_that_differs_from_the_selected_target(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "operator-data"
+    raw_root = tmp_path / "raw"
+    fixture = Path(__file__).parents[1] / "fixtures" / "app_operator_redacted" / "group_page.html"
+    with Database(output / "scanner.sqlite3") as database:
+        database.migrate()
+        SessionProfileService(database.connection, tmp_path / "sessions").import_state(
+            "profile-app-url",
+            {"cookies": [], "origins": [{"origin": "https://app.invalid", "localStorage": []}]},
+        )
+        selected = TargetPreparationService(database.connection).add_url(
+            "https://app.invalid/groups/9100001"
+        )
+        JobRepository(database.connection).create("job-app-url")
+        LiveRunRepository(database.connection).create(
+            "job-app-url",
+            "profile-app-url",
+            selected,
+            datetime(2026, 7, 1, tzinfo=UTC),
+            "app_rendered_html/1.0",
+        )
+        with database.connection:
+            database.connection.execute(
+                "UPDATE live_runs SET canonical_url = ? WHERE job_id = ?",
+                ("https://app.invalid:443/groups/9100001", "job-app-url"),
+            )
+
+    mismatched = fixture.read_bytes().replace(
+        b"https://app.invalid/groups/9100001/?ref=group_header",
+        b"https://app.invalid:443/groups/9100001/?ref=group_header",
+    )
+    with pytest.raises(UnsupportedLayoutError, match="URL"):
+        LiveCaptureWorkflow(output, raw_root).capture_html("job-app-url", mismatched)

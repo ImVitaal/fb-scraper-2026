@@ -141,7 +141,7 @@ def run(
         else:
             assert fixture is not None
             result = FixtureWorkflow(output, raw_root).run(fixture)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (EOFError, OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
     payload = result if isinstance(result, dict) else result.as_dict()
@@ -156,6 +156,13 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
         sessions = SessionProfileService(database.connection, configuration.session_root)
         _prepare_session(sessions, configuration.session)
         state = sessions.read_state(configuration.session.profile)
+        session_metadata = sessions.inspect(configuration.session.profile)
+        browser_profile = (
+            sessions.browser_profile_directory(configuration.session.profile)
+            if session_metadata.source_browser.endswith("_persistent")
+            else None
+        )
+        browser_channel = "chrome" if "chrome" in session_metadata.source_browser else None
         health = sessions.probe_health(
             configuration.session.profile,
             configuration.session.start_url,
@@ -174,6 +181,8 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
                 protection=configuration.protection,
                 headless=configuration.headless,
                 protection_sink=discovery_protection,
+                browser_profile=browser_profile,
+                browser_channel=browser_channel,
             )
         except (BrowserStateError, UnsupportedDiscoveryLayoutError) as error:
             stop_reason = (
@@ -235,6 +244,8 @@ def _prepare_target(
     protection: OperatorProtectionConfiguration | None = None,
     headless: bool = False,
     protection_sink: dict[str, object] | None = None,
+    browser_profile: Path | None = None,
+    browser_channel: str | None = None,
 ):
     """Prepare and select exactly one configured Group."""
     if configuration.method == "url":
@@ -258,37 +269,44 @@ def _prepare_target(
         assert configuration.keyword is not None
         assert configuration.location is not None
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=headless)
-            try:
+            browser = None
+            if browser_profile is not None:
+                context = playwright.chromium.launch_persistent_context(
+                    str(browser_profile),
+                    channel=browser_channel,
+                    headless=headless,
+                )
+            else:
+                browser = playwright.chromium.launch(headless=headless)
                 context = browser.new_context(storage_state=configuration_state(state))
+            try:
+                page = context.new_page()
+                discovery_adapter = SessionDiscoveryAdapter(
+                    mode=DiscoveryMode.LIVE,
+                    base_url=configuration.base_url,
+                    navigation_delay_seconds=(
+                        random.uniform(*protection.navigation_delay_seconds)
+                        if protection is not None
+                        else 0.0
+                    ),
+                    retry_delays_seconds=(
+                        protection.retry_delays_seconds if protection is not None else ()
+                    ),
+                    max_retries=2 if protection is not None else 0,
+                )
                 try:
-                    page = context.new_page()
-                    discovery_adapter = SessionDiscoveryAdapter(
-                        mode=DiscoveryMode.LIVE,
-                        base_url=configuration.base_url,
-                        navigation_delay_seconds=(
-                            random.uniform(*protection.navigation_delay_seconds)
-                            if protection is not None
-                            else 0.0
-                        ),
-                        retry_delays_seconds=(
-                            protection.retry_delays_seconds if protection is not None else ()
-                        ),
-                        max_retries=2 if protection is not None else 0,
+                    captured = discovery_adapter.capture(
+                        keyword=configuration.keyword,
+                        location=configuration.location,
+                        page=cast(DiscoveryPage, page),
                     )
-                    try:
-                        captured = discovery_adapter.capture(
-                            keyword=configuration.keyword,
-                            location=configuration.location,
-                            page=cast(DiscoveryPage, page),
-                        )
-                    finally:
-                        if protection_sink is not None:
-                            protection_sink.update(discovery_adapter.protection_telemetry)
                 finally:
-                    context.close()
+                    if protection_sink is not None:
+                        protection_sink.update(discovery_adapter.protection_telemetry)
             finally:
-                browser.close()
+                context.close()
+                if browser is not None:
+                    browser.close()
         capture_id = sha256(captured.raw_html).hexdigest()
         stored = GzipRawCaptureStore(raw_root).write(
             capture_id,
@@ -310,6 +328,11 @@ def _prepare_target(
             source_url=captured.source_url,
             raw_capture_id=capture_id,
         )
+        if configuration.method == "live_discovery" and not campaign.candidates:
+            raise BrowserStateError(
+                "joined_group_missing",
+                "live discovery returned no already-joined Group candidate",
+            )
         if configuration.method == "live_join" and not campaign.candidates:
             candidate = _resolve_join_candidate(
                 campaign.membership_preparation_candidates,
@@ -709,25 +732,14 @@ def _capture_selected_locked(
             else None
         )
         selected = TargetPreparationService(database.connection).get_selected(campaign)
-        known_post_ids = {
-            str(row["post_id"])
-            for row in database.connection.execute(
-                """
-                SELECT DISTINCT post.post_id
-                FROM posts AS post
-                JOIN pagination_checkpoints AS checkpoint
-                  ON checkpoint.raw_capture_id = post.raw_capture_id
-                WHERE post.group_id = ?
-                """,
-                (selected.group_id,),
-            )
-        }
+        known_post_ids = _known_post_ids(database.connection, selected.group_id)
+        lower_bound = datetime.now(UTC) - timedelta(days=30)
         JobRepository(database.connection).create(job_id)
         LiveRunRepository(database.connection).create(
             job_id,
             profile,
             selected,
-            datetime.now(UTC) - timedelta(days=30),
+            lower_bound,
             "app_rendered_html/1.0",
         )
     limits = _protection_limits(protection) if protection is not None else None
@@ -742,7 +754,7 @@ def _capture_selected_locked(
     try:
         with adapter.capture_pages(
             selected.canonical_url,
-            lower_bound=datetime.now(UTC) - timedelta(days=30),
+            lower_bound=lower_bound,
         ) as capture_page:
             result = LiveCaptureWorkflow(output, raw_root).capture_pages(
                 job_id,
@@ -784,6 +796,23 @@ def _capture_selected_locked(
         "receipt": str(receipt.path),
         "receipt_sha256": receipt.sha256,
         "state": result.state.value,
+    }
+
+
+def _known_post_ids(connection, group_id: str) -> set[str]:
+    """Return already persisted Post IDs that the next browser pass can skip."""
+    return {
+        str(row["post_id"])
+        for row in connection.execute(
+            """
+            SELECT DISTINCT post.post_id
+            FROM posts AS post
+            JOIN pagination_checkpoints AS checkpoint
+              ON checkpoint.raw_capture_id = post.raw_capture_id
+            WHERE post.group_id = ?
+            """,
+            (group_id,),
+        )
     }
 
 
@@ -910,12 +939,14 @@ def resume(
                 if session_metadata.source_browser.endswith("_persistent")
                 else None
             )
+            known_post_ids = _known_post_ids(database.connection, live.group_id)
         protection = OperatorProtectionConfiguration()
         with _operator_capture_gate(output, live.group_id, protection) as between_group_wait:
             adapter = PlaywrightGroupCaptureAdapter(
                 storage_state,
                 headless=headless,
                 limits=_protection_limits(protection),
+                known_post_ids=known_post_ids,
                 user_data_directory=browser_profile,
                 channel="chrome" if browser_profile is not None else None,
             )

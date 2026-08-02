@@ -323,6 +323,10 @@ class AppDiscoveryParser:
                 raise UnsupportedDiscoveryLayoutError(
                     f"conflicting duplicate Group candidate: {group_id}"
                 )
+            if previous is not None and previous[6] is not candidate[6]:
+                raise UnsupportedDiscoveryLayoutError(
+                    f"conflicting duplicate Group membership: {group_id}"
+                )
             if previous is None or len(name) < len(previous[1]):
                 found[group_id] = candidate
         if not found:

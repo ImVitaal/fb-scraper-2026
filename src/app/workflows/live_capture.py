@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from app.capture import (
     BrowserStateError,
@@ -121,6 +122,14 @@ class LiveCaptureWorkflow:
             cursor, pages_completed, seen_cursors = self._resume_position(
                 database.connection, job_id
             )
+            if cursor is None and pages_completed > 0:
+                self._set_task_state(database.connection, job_id, "succeeded")
+                jobs.transition(job_id, JobState.SUCCEEDED)
+                return LiveCaptureResult(
+                    job_id,
+                    self._identifiers(database.connection, live_run.group_id),
+                    JobState.SUCCEEDED,
+                )
             profile = database.connection.execute(
                 "SELECT session_class FROM session_profiles WHERE profile_id = ?",
                 (live_run.profile_id,),
@@ -151,6 +160,14 @@ class LiveCaptureWorkflow:
 
                 # The raw file becomes durable before any parser sees the bytes.
                 stored = self.raw_store.write(capture_id, page.raw_html, suffix=".html")
+                RawCaptureMetadataRepository(database.connection).add(
+                    capture_id=capture_id,
+                    sha256=stored.sha256,
+                    source_url=live_run.canonical_url,
+                    collected_at=observed_at,
+                    storage_path=stored.path.name,
+                    byte_count=stored.byte_count,
+                )
                 try:
                     if live_run.adapter_version == "app_rendered_html/1.0":
                         group, posts, comments = AppGroupExtractionAdapter().parse(
@@ -183,6 +200,19 @@ class LiveCaptureWorkflow:
 
                 if group.group_id != live_run.group_id:
                     error = UnsupportedLayoutError("captured Group does not match selected target")
+                    self._record_failure(
+                        database,
+                        jobs,
+                        job_id,
+                        capture_id,
+                        "parser_drift",
+                        str(error),
+                    )
+                    raise error
+                if not self._same_canonical_url(str(group.canonical_url), live_run.canonical_url):
+                    error = UnsupportedLayoutError(
+                        "captured Group URL does not match selected target"
+                    )
                     self._record_failure(
                         database,
                         jobs,
@@ -382,14 +412,36 @@ class LiveCaptureWorkflow:
             """,
             (job_id,),
         ).fetchall()
-        non_terminal = [row for row in rows if row["cursor"] is not None]
-        if not non_terminal:
+        if not rows:
             return None, 0, set()
+        latest = rows[-1]
+        if latest["cursor"] is None:
+            return (
+                None,
+                int(latest["interaction_number"]),
+                {str(row["cursor"]) for row in rows[:-1] if row["cursor"] is not None},
+            )
+        non_terminal = [row for row in rows if row["cursor"] is not None]
         latest = non_terminal[-1]
         return (
             str(latest["cursor"]),
             int(latest["interaction_number"]),
             {str(row["cursor"]) for row in non_terminal},
+        )
+
+    @staticmethod
+    def _same_canonical_url(left: str, right: str) -> bool:
+        """Compare Group URLs while ignoring only trailing slashes and case."""
+        left_parts = urlsplit(left)
+        right_parts = urlsplit(right)
+        return (
+            left_parts.scheme.casefold(),
+            left_parts.netloc.casefold(),
+            left_parts.path.rstrip("/") or "/",
+        ) == (
+            right_parts.scheme.casefold(),
+            right_parts.netloc.casefold(),
+            right_parts.path.rstrip("/") or "/",
         )
 
     @staticmethod
