@@ -402,7 +402,7 @@ This entry supersedes the earlier local-skeleton wording for the current checkou
 
 ### Agent handoffs
 
-- **T2 — REVISE:** the authenticated in-app browser exposed one relevant private-Group candidate. Exactly one Join request was submitted. The post-action control was `Cancel Request`, so membership remained pending; T2 stopped before capture, posts, comments, replay, or exports. The redacted receipt remains outside Git at `%LOCALAPPDATA%\private-group-scanner\exports\t2-join-REVISE-b47d213b-84e8-4884-8a58-1bd9adb1e556.json`, SHA-256 `7b4b0125adf9f7ec3671e717def03b756959dc9ed5e7ebec2b05c6edd4ac3fff`.
+- **T2 — REVISE:** the authenticated in-app browser exposed one relevant private-Group candidate. Exactly one Join request was submitted; a later read-only check showed `Joined` with recent visible activity/comments. Direct capture stopped at `interaction_failed` after four retries with one Group, zero Posts, and zero Comments. The redacted receipt remains outside Git at `%LOCALAPPDATA%\private-group-scanner\exports\8e1390a0-99a0-4aad-8f9d-7b968bb3f630.operator-receipt.json`, SHA-256 `48184ae33d69263c816392aabf000655947a39e95a6a4526a61a5d03a8ff63ce`.
 - **T3 — integrated locally:** `OperatorBatchStopError`, strict target identity checks, atomic progress, stopped-state persistence, and incomplete-only resume are in the branch. Root added the confirmed-candidate API, one-Group callback adapter, and `batch-run --config` path. Synthetic callback, stop, target, and CLI tests pass.
 - **T4 — read-only audit:** no release verdict was issued. The APP one-Group gate and live ten-Group receipt remain P0 release gaps. The prior audit also identified the stale local status counts; this entry records the current verification instead.
 
@@ -414,13 +414,13 @@ This entry supersedes the earlier local-skeleton wording for the current checkou
 
 ### Gate decision
 
-Phase 4F remains **REVISE** because membership was not verified and the one-Group APP capture/resume/replay/export receipt is absent. Phase 4G remains gated; the local callback path is ready for activation after Phase 4F acceptance, but no live ten-Group receipt exists. T4 must repeat the release matrix after the next integrated APP evidence.
+Phase 4F remains **REVISE** because the one-Group APP capture stopped at `interaction_failed` before Posts/Comments and the complete capture/resume/replay/export receipt is absent. Phase 4G remains gated; the local callback path is ready for activation after Phase 4F acceptance, but no live ten-Group receipt exists. T4 must repeat the release matrix after the next integrated APP evidence.
 
 ### Next controlled sequence
 
 1. Confirm zero scanner-owned Chrome processes and clean profile locks.
 2. Run doctor and session health at the external roots.
-3. Check for an already-joined accessible Group before any new Join request.
-4. If a new Join is required, submit one request only, verify membership, and stop on pending/rejected/challenge/restriction/lock.
-5. After membership verification, complete the one-Group capture, interruption/resume, offline replay, export parity, Comment reconciliation, and date-boundary receipt.
+3. Reuse the observed joined Group and diagnose the `interaction_failed` capture stop before considering any new Join.
+4. If a new Join is required for a different Group, submit one request only, verify membership, and stop on pending/rejected/challenge/restriction/lock.
+5. After capture succeeds, complete interruption/resume, offline replay, export parity, Comment reconciliation, and date-boundary evidence.
 6. Activate `pgscan batch-run --config OPERATOR_CONFIG.toml` for the sequential ten-Group evidence, then repeat T4.

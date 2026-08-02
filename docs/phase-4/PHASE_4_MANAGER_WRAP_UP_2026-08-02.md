@@ -15,7 +15,7 @@ The local Phase 4 candidate is integrated and verified. The release remains **RE
 
 ## Agent status
 
-- **T2:** REVISE. One Join request was submitted; membership stayed pending (`Cancel Request`). No capture or other social action ran. Receipt: `%LOCALAPPDATA%\private-group-scanner\exports\t2-join-REVISE-b47d213b-84e8-4884-8a58-1bd9adb1e556.json`.
+- **T2:** REVISE. The Group later showed `Joined` with recent visible activity/comments. Direct capture stopped at `interaction_failed` after four retries, with one Group, zero Posts, and zero Comments. Receipt: `%LOCALAPPDATA%\private-group-scanner\exports\8e1390a0-99a0-4aad-8f9d-7b968bb3f630.operator-receipt.json`; SHA-256 `48184ae33d69263c816392aabf000655947a39e95a6a4526a61a5d03a8ff63ce`.
 - **T3:** local implementation integrated; live ten-Group run waits for Phase 4F acceptance.
 - **T4:** read-only audit completed without a release verdict; it found the APP one-Group and live ten-Group receipts missing.
 
@@ -26,4 +26,4 @@ The local Phase 4 candidate is integrated and verified. The release remains **RE
 
 ## Exact remaining gate
 
-Verify membership for an accessible Group, then produce the authenticated one-Group receipt covering capture, interruption/resume, offline replay, five exports, Comment reconciliation, and date-boundary behavior. Only after that run the ten-Group batch and repeat T4.
+Reuse the observed joined Group and resolve the `interaction_failed` capture stop, then produce the authenticated one-Group receipt covering capture, interruption/resume, offline replay, five exports, Comment reconciliation, and date-boundary behavior. Only after that run the ten-Group batch and repeat T4.
