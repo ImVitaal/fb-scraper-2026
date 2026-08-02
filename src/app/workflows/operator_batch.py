@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 from app.metrics import (
     ProcessResourceMeasurement,
@@ -285,11 +286,11 @@ class OperatorBatchWorkflow:
         return OperatorBatchGroupResult(
             target_key=str(value["target_key"]),
             state=str(value["state"]),
-            attempts=int(value["attempts"]),
+            attempts=int(cast(int, value["attempts"])),
             run_id_sha256=(
                 str(value["run_id_sha256"]) if value.get("run_id_sha256") is not None else None
             ),
-            identifier_count=int(value.get("identifier_count", 0)),
+            identifier_count=int(cast(int, value.get("identifier_count", 0))),
             identifier_set_sha256=(
                 str(value["identifier_set_sha256"])
                 if value.get("identifier_set_sha256") is not None
@@ -301,9 +302,9 @@ class OperatorBatchWorkflow:
                 else None
             ),
             raw_sha256=str(value["raw_sha256"]) if value.get("raw_sha256") is not None else None,
-            validated_posts=int(value.get("validated_posts", 0)),
-            validated_comments=int(value.get("validated_comments", 0)),
-            duration_seconds=float(value["duration_seconds"]),
+            validated_posts=int(cast(int, value.get("validated_posts", 0))),
+            validated_comments=int(cast(int, value.get("validated_comments", 0))),
+            duration_seconds=float(cast(float, value["duration_seconds"])),
             error_type=str(value["error_type"]) if value.get("error_type") is not None else None,
         )
 
