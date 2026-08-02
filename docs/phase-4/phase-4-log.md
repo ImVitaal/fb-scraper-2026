@@ -369,3 +369,29 @@ The stale project handoff and superseded completion documents were removed in `3
 - `git diff --check`: passed.
 - `pgscan doctor`: 9/9 checks passed.
 - Git push parity remains the last manager action. Phase 4F and 4G APP acceptance remain open.
+
+## Current manager continuation — 2026-08-02 post-commit
+
+The manager integrated the bounded local fixes and the isolated Phase 4G hardening handoff.
+
+### Local integration
+
+- `b10a3ba` applies the operator pacing gate to resumed captures.
+- `20f9062` adds persistent-profile discovery reuse, structured no-joined stops, raw-first capture metadata, canonical Group URL validation, terminal-checkpoint resume, duplicate-membership conflict rejection, and guided EOF normalization.
+- `6b56ecb` hardens the Phase 4G local wrapper with atomic progress, strict target-set resume validation, duplicate-target rejection, canonical identifier-union hashing, and a required external raw root.
+- Full local verification passed: 244 tests, 81.23% coverage, Ruff format/lint, `ty`, and the tracked-file secret scan after record updates.
+
+### External APP evidence
+
+- The post-patch guarded run used the external operator roots and stopped before target selection with `unsupported_discovery_layout`.
+- Its redacted receipt is outside Git at `exports\a3087b32-a80b-4826-b81d-2e136f2cef42.operator-receipt.json`; SHA-256 is `858B815723FB315D0BB386251407997A1F3BCCB4A719FCCC96CF9C4B3E62FB98`.
+- Safe receipt counts are zero Groups, zero Posts, zero Comments, and one failure. Cleanup found zero scanner-owned Chrome processes and zero profile-lock markers.
+
+### Gate decision
+
+Phase 4F remains **REVISE**. The current APP session still exposes no supported joined Group candidate, so one-Group capture, resume, replay, five-export parity, Comment reconciliation, date-boundary evidence, ten-Group execution, and T4 remain gated. No membership or social actions occurred.
+
+### Record verification
+
+- `pgscan doctor` passed 9/9 at the exact external output, raw, and session roots.
+- The working tree is ready for the final push-parity check after this record commit.

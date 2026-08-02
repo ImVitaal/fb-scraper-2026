@@ -18,7 +18,8 @@ No claim in this report promotes fixture or local-browser evidence to APP accept
 - Rendered Group headings and `[role="article"]` post containers are parsed on labelled fixtures.
 - Repeated empty Group shells stop after the configured no-progress limit.
 - Local one-Group parity covers interruption, resume, offline replay, and CSV/JSON/SQLite/manifest/Markdown outputs.
-- `OperatorBatchWorkflow` provides a bounded sequential local skeleton with per-target progress writes, incomplete-only callback retry, recoverable-error handling, redacted target keys, and aggregate metrics. It is not wired to the real one-Group resume path or CLI/config surface.
+- `OperatorBatchWorkflow` provides a bounded sequential local skeleton with atomic progress, strict resume-target validation, duplicate-target rejection, canonical identifier-union hashing, incomplete-only callback retry, recoverable-error handling, redacted target keys, and aggregate metrics. It is not wired to the real one-Group resume path or CLI/config surface.
+- Resumable capture now records raw metadata before parsing, rejects Group URL drift, avoids terminal-checkpoint refetches, rejects conflicting duplicate membership states, and reuses scanner-owned persistent browser profiles for discovery/capture.
 
 ## Acceptance matrix
 
@@ -28,10 +29,10 @@ No claim in this report promotes fixture or local-browser evidence to APP accept
 | Normal-Chrome attachment cleanup | Pass locally and in external cleanup check | Zero scanner-owned processes and locks after cleanup |
 | Rendered APP parsing | Pass on labelled redacted fixtures | Focused Phase 4C/T1 tests |
 | Unsupported-layout handling | Pass | Current APP run stops with `unsupported_discovery_layout` |
-| Raw-first capture and checkpoint behavior | Pass locally | Existing capture and parity tests |
+| Raw-first capture and checkpoint behavior | Pass locally | Capture tests cover pre-parse metadata, terminal checkpoint resume, URL identity, and parity |
 | Interrupted run and resume identity parity | Pass locally | Phase 4F local parity test |
 | Offline replay and five local export formats | Pass locally | Phase 4F local parity test |
-| Phase 4G sequential batch wrapper | Local skeleton only | Three focused integration tests; no real one-Group adapter, CLI/config path, or live receipt |
+| Phase 4G sequential batch wrapper | Local skeleton only | Nine focused integration tests; atomic progress and resume validation pass, but no real one-Group adapter, CLI/config path, or live receipt |
 | Controlled APP session preparation | Pass | Doctor 9/9; imported and guided health reached authenticated route |
 | Controlled APP automatic joined-Group discovery | **Open** | No supported joined candidate in current route |
 | Controlled APP one-Group capture | **Open** | No target selected; no capture receipt |
@@ -46,7 +47,7 @@ All paths below are outside Git and contain redacted operational evidence only.
 | Evidence | Path | SHA-256 |
 |---|---|---|
 | Guided T2 stop | `%LOCALAPPDATA%\private-group-scanner\exports\t2-guided-REVISE-d1beb55f-ab43-4024-ad6a-73a89fca81b5.json` | `c47ee979d0eaa3d24ed7374ee7bb58d84f8a97dd88cf03440a8b20f81b5525ce` |
-| Current manager discovery stop | `%LOCALAPPDATA%\private-group-scanner\exports\2c3a1fd2-83bb-4418-ac0d-699fd802e828.operator-receipt.json` | `D95E7AEE070D10258E8AA272D429A97B7C76FB21F5AE9EF761C3CD103D717667` |
+| Current manager discovery stop | `%LOCALAPPDATA%\private-group-scanner\exports\a3087b32-a80b-4826-b81d-2e136f2cef42.operator-receipt.json` | `858B815723FB315D0BB386251407997A1F3BCCB4A719FCCC96CF9C4B3E62FB98` |
 | Route probe | `%LOCALAPPDATA%\private-group-scanner\route-probe-manager-20260802.json` | `0adf3a594fec81c57f3aa786d6b4c42d7715368b120dd1b9ed927a4645e8cacc` |
 | Discovery query probe | `%LOCALAPPDATA%\private-group-scanner\discovery-query-probe-20260802.json` | `b82239acf1baefcd71217eeb4be523ec96912310ffa3e0856da5cc23fb59279e` |
 | Direct Group probe | `%LOCALAPPDATA%\private-group-scanner\phase4f-direct-probe-20260802\receipt.json` | `f702afe700c33afaf34f7e74f5b6beb23a51ddb3788d7e37da4fae067afbf2cd` |
@@ -67,7 +68,7 @@ uv run detect-secrets scan $files
 git diff --check
 ```
 
-- Full suite: **234 passed** in 309.83 seconds; coverage **81.17%** (80% threshold met).
+- Full suite: **244 passed** in 231.29 seconds; coverage **81.23%** (80% threshold met).
 - Ruff format, Ruff lint, and `ty` passed. The tracked-file secret scan returned zero findings. `pgscan doctor` passed 9/9. Git checks passed before commit.
 - A clean Git tree and `origin/main` parity are required.
 
