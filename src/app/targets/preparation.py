@@ -326,6 +326,26 @@ class TargetPreparationService:
             row["source"],
         )
 
+    def get_joined_candidates(
+        self, campaign_id: str, *, limit: int = 10
+    ) -> tuple[TargetCandidate, ...]:
+        """Return the ranked, confirmed candidates from one discovery campaign."""
+        if not 1 <= limit <= 10:
+            raise ValueError("joined candidate limit must be from one to ten")
+        rows = self.connection.execute(
+            """
+            SELECT hit.hit_id, hit.group_id, hit.canonical_url, hit.name, hit.source,
+                   hit.rank, hit.membership_state
+            FROM candidate_hits AS hit
+            JOIN discovery_queries AS query ON query.query_id = hit.query_id
+            WHERE query.campaign_id = ? AND hit.membership_state = 'joined'
+            ORDER BY hit.rank, hit.group_id
+            LIMIT ?
+            """,
+            (campaign_id, limit),
+        ).fetchall()
+        return tuple(self._target_candidate(row) for row in rows)
+
     def _create_campaign(self, keyword: str, location: str) -> str:
         campaign_id, query_id = str(uuid4()), str(uuid4())
         now = datetime.now(UTC).isoformat()

@@ -6,6 +6,7 @@ import random
 import time
 from collections.abc import Mapping
 from contextlib import contextmanager, suppress
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Annotated, cast
 from uuid import uuid4
 
 import typer
+from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import StorageState as PlaywrightStorageState
 from playwright.sync_api import sync_playwright
 
@@ -49,6 +51,7 @@ from app.session import (
     launch_normal_chrome_attachment,
     probe_with_playwright,
 )
+from app.session.profiles import SessionEnvelopeError
 from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
 from app.storage.repositories import JobRepository, RawCaptureMetadataRepository
@@ -57,6 +60,10 @@ from app.workflows import (
     BatchFixtureWorkflow,
     FixtureComparisonWorkflow,
     FixtureWorkflow,
+    OperatorBatchStopError,
+    OperatorBatchTarget,
+    OperatorBatchWorkflow,
+    OperatorCaptureResult,
 )
 from app.workflows.html_replay import StoredHtmlReplayWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
@@ -213,6 +220,143 @@ def _run_operator(configuration: OperatorRunConfiguration) -> dict[str, object]:
         headless=configuration.headless,
         protection=configuration.protection,
         discovery_protection=discovery_protection,
+    )
+
+
+def _run_operator_batch(
+    configuration: OperatorRunConfiguration, *, resume: bool
+) -> dict[str, object]:
+    """Discover up to ten confirmed Groups and run the one-worker batch wrapper."""
+    if configuration.target.method != "live_discovery":
+        raise ValueError("operator batch requires live_discovery after Phase 4F membership")
+
+    # Validate output and raw roots before opening the database or browser session.
+    workflow = OperatorBatchWorkflow(
+        configuration.output,
+        configuration.raw_root,
+        # _capture_selected owns the configured 900-second operator gate; avoid double sleep.
+        between_groups_seconds=0,
+    )
+
+    discovery_protection: dict[str, object] = {}
+    with Database(configuration.output / "scanner.sqlite3") as database:
+        database.migrate()
+        sessions = SessionProfileService(database.connection, configuration.session_root)
+        _prepare_session(sessions, configuration.session)
+        state = sessions.read_state(configuration.session.profile)
+        session_metadata = sessions.inspect(configuration.session.profile)
+        browser_profile = (
+            sessions.browser_profile_directory(configuration.session.profile)
+            if session_metadata.source_browser.endswith("_persistent")
+            else None
+        )
+        browser_channel = "chrome" if "chrome" in session_metadata.source_browser else None
+        health = sessions.probe_health(
+            configuration.session.profile,
+            configuration.session.start_url,
+            probe_with_playwright,
+        )
+        if health.health.value != "ready":
+            raise ValueError(f"session health is {health.health.value}")
+        targets = TargetPreparationService(database.connection)
+        selected = _prepare_target(
+            targets,
+            state,
+            replace(configuration.target, select="1"),
+            raw_root=configuration.raw_root,
+            raw_captures=RawCaptureMetadataRepository(database.connection),
+            protection=configuration.protection,
+            headless=configuration.headless,
+            protection_sink=discovery_protection,
+            browser_profile=browser_profile,
+            browser_channel=browser_channel,
+        )
+        candidates = targets.get_joined_candidates(selected.campaign_id, limit=10)
+
+    batch_targets = tuple(
+        OperatorBatchTarget(candidate.group_id, candidate.canonical_url) for candidate in candidates
+    )
+    if not batch_targets:
+        raise BrowserStateError(
+            "joined_group_missing",
+            "live discovery returned no confirmed Group candidates",
+        )
+
+    def capture_one(target: OperatorBatchTarget) -> OperatorCaptureResult:
+        try:
+            with Database(configuration.output / "scanner.sqlite3") as database:
+                database.migrate()
+                campaign = TargetPreparationService(database.connection).add_url(
+                    target.canonical_url
+                )
+            if (
+                campaign.group_id != target.group_id
+                or campaign.canonical_url != target.canonical_url
+            ):
+                raise OperatorBatchStopError("target_identity_mismatch")
+            captured = _capture_selected(
+                configuration.session.profile,
+                campaign.campaign_id,
+                output=configuration.output,
+                raw_root=configuration.raw_root,
+                session_root=configuration.session_root,
+                headless=configuration.headless,
+                protection=configuration.protection,
+                discovery_protection=discovery_protection,
+            )
+            identifiers = captured.get("identifiers")
+            if not isinstance(identifiers, list) or not all(
+                isinstance(identifier, str) for identifier in identifiers
+            ):
+                raise OperatorBatchStopError("capture_result_invalid")
+            job_id = captured.get("job_id")
+            normalized_sha256 = captured.get("normalized_sha256")
+            raw_sha256 = captured.get("raw_sha256")
+            if (
+                not isinstance(job_id, str)
+                or not job_id.strip()
+                or not _is_sha256(normalized_sha256)
+                or not _is_sha256(raw_sha256)
+            ):
+                raise OperatorBatchStopError("capture_result_invalid")
+            normalized_hash = cast(str, normalized_sha256)
+            raw_hash = cast(str, raw_sha256)
+            typed_identifiers = tuple(cast(str, identifier) for identifier in identifiers)
+            return OperatorCaptureResult(
+                run_id=job_id,
+                identifiers=typed_identifiers,
+                normalized_sha256=normalized_hash,
+                raw_sha256=raw_hash,
+            )
+        except (BrowserStateError, OperatorBatchStopError, UnsupportedDiscoveryLayoutError):
+            raise
+        except (OSError, PlaywrightError, RuntimeError, SessionEnvelopeError) as error:
+            raise OperatorBatchStopError(_operator_batch_stop_reason(error)) from error
+
+    result = workflow.run(batch_targets, capture_one, resume=resume)
+    return result.as_dict()
+
+
+def _operator_batch_stop_reason(error: BaseException) -> str:
+    """Map operator-side failures to a redacted durable stop reason."""
+    message = str(error).lower()
+    if "lock" in message:
+        return "local_browser_profile_lock"
+    if "challenge" in message:
+        return "session_challenged"
+    if "restrict" in message:
+        return "access_restricted"
+    if isinstance(error, SessionEnvelopeError):
+        return "session_invalid"
+    return "operator_stop"
+
+
+def _is_sha256(value: object) -> bool:
+    """Validate a callback hash before it enters the redacted batch receipt."""
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdefABCDEF" for character in value)
     )
 
 
@@ -1038,18 +1182,37 @@ def replay(
 
 @app.command("batch-run")
 def batch_run(
-    fixtures: Annotated[Path, typer.Option("--fixtures", file_okay=False, readable=True)],
+    fixtures: Annotated[
+        Path | None, typer.Option("--fixtures", file_okay=False, readable=True)
+    ] = None,
+    config: Annotated[
+        Path | None,
+        typer.Option("--config", dir_okay=False, readable=True),
+    ] = None,
     resume_batch: Annotated[bool, typer.Option("--resume")] = False,
     output: Annotated[Path, typer.Option("--output")] = DEFAULT_OUTPUT,
     raw_root: Annotated[Path, typer.Option("--raw-root")] = DEFAULT_RAW_ROOT,
 ) -> None:
-    """Run up to ten synthetic Groups with isolated terminal states."""
+    """Run a synthetic batch or a connected one-worker Group batch."""
     try:
-        result = BatchFixtureWorkflow(output, raw_root).run(fixtures, resume=resume_batch)
+        if (fixtures is None) == (config is None):
+            raise ValueError("use exactly one of --fixtures or --config")
+        if config is not None:
+            if not OperatorRunConfiguration.is_operator(config):
+                raise ValueError("--config must contain an operator configuration")
+            payload = _run_operator_batch(
+                OperatorRunConfiguration.load(config),
+                resume=resume_batch,
+            )
+        else:
+            assert fixtures is not None
+            payload = (
+                BatchFixtureWorkflow(output, raw_root).run(fixtures, resume=resume_batch).as_dict()
+            )
     except (OSError, ValueError, RuntimeError) as error:
         typer.echo(f"error: {error}")
         raise typer.Exit(1) from error
-    typer.echo(json.dumps(result.as_dict(), sort_keys=True))
+    typer.echo(json.dumps(payload, sort_keys=True))
 
 
 @app.command("compare")

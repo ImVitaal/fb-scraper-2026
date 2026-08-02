@@ -6,6 +6,7 @@ from app.workflows.fixture_run import FixtureWorkflow, WorkflowResult
 from app.workflows.operator_batch import (
     OperatorBatchGroupResult,
     OperatorBatchRunResult,
+    OperatorBatchStopError,
     OperatorBatchTarget,
     OperatorBatchWorkflow,
     OperatorCaptureResult,
@@ -20,6 +21,7 @@ __all__ = [
     "FixtureWorkflow",
     "OperatorBatchGroupResult",
     "OperatorBatchRunResult",
+    "OperatorBatchStopError",
     "OperatorBatchTarget",
     "OperatorBatchWorkflow",
     "OperatorCaptureResult",
