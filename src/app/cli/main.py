@@ -53,7 +53,11 @@ from app.storage.database import Database
 from app.storage.live_runs import LiveRunRepository
 from app.storage.repositories import JobRepository, RawCaptureMetadataRepository
 from app.targets import TargetCampaign, TargetPreparationService
-from app.workflows import BatchFixtureWorkflow, FixtureComparisonWorkflow, FixtureWorkflow
+from app.workflows import (
+    BatchFixtureWorkflow,
+    FixtureComparisonWorkflow,
+    FixtureWorkflow,
+)
 from app.workflows.html_replay import StoredHtmlReplayWorkflow
 from app.workflows.live_capture import LiveCaptureWorkflow
 from app.workflows.operator_receipt import OperatorRunReceiptWriter
@@ -789,10 +793,12 @@ def _capture_selected_locked(
             discovery_protection=discovery_protection,
         ),
     )
+    receipt_payload = json.loads(receipt.path.read_text(encoding="utf-8"))
     return {
         "identifiers": list(result.identifiers),
         "job_id": result.job_id,
         "normalized_sha256": delivery.normalized_sha256,
+        "raw_sha256": str(receipt_payload["raw_set_sha256"]),
         "receipt": str(receipt.path),
         "receipt_sha256": receipt.sha256,
         "state": result.state.value,

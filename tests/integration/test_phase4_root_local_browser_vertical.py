@@ -115,6 +115,7 @@ def test_local_real_browser_runs_capture_and_offline_replay_without_patching_cap
     receipt = json.loads(receipt_bytes)
     assert captured["receipt_sha256"] == sha256(receipt_bytes).hexdigest()
     assert receipt["normalized_sha256"] == captured["normalized_sha256"]
+    assert captured["raw_sha256"] == receipt["raw_set_sha256"]
     assert receipt["session_class"] == "imported"
     assert receipt["state"] == "succeeded"
     assert receipt["counts"] == {
